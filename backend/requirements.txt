@@ -2,3 +2,7 @@ fastapi
 uvicorn[standard]
 python-jose[cryptography]
 httpx
+asyncpg
+langchain>=1.0
+langchain-openai
+

@@ -57,10 +57,12 @@ CREATE TABLE IF NOT EXISTS users (
     keycloak_id UUID NULL -- nullable, will be populated later when wiring auth to DB
 );
 
-INSERT INTO users (username, email) VALUES
-    ('alice', 'alice@example.com'),
-    ('bob', 'bob@example.com')
-ON CONFLICT DO NOTHING;
+INSERT INTO users (username, email, keycloak_id) VALUES
+    ('alice', 'alice@example.com', 'a11ce000-0000-0000-0000-000000000000'),
+    ('bob', 'bob@example.com', 'b0b00000-0000-0000-0000-000000000000')
+ON CONFLICT (username) DO UPDATE SET
+    email = EXCLUDED.email,
+    keycloak_id = EXCLUDED.keycloak_id;
 
 -- ------------------------------------------------------------
 -- Table: user_roles (many‑to‑many)

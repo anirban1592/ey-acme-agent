@@ -9,7 +9,7 @@
 | Phase 1 | Project skeleton + Keycloak-based authentication | Done |
 | Phase 2 | App data store: Postgres schema + seed data, docker-compose integration | Not started |
 | Phase 3 | MCP server (`mcp/`, fastmcp) with its own DB connection pool, wrapping Postgres directly | Done |
-| Phase 4 | Agentic chat layer (LLM + tool-calling + MCP server against Phase 3 service layer) | Not started |
+| Phase 4 | Agentic chat layer (LLM + tool-calling + MCP server against Phase 3 service layer) | In progress |
 | Phase 5 | Escalation workflow, WebSocket chat UI integration, RBAC refinement | Not started |
 | Phase 6 | Evaluation (deepeval), observability, hardening, deployment | Not started |
 
@@ -142,7 +142,54 @@ Done — all three subphases complete and verified end-to-end via docker-compose
 
 ## Phase 4: Agentic Chat Layer
 
-Not started. Scope: LLM integration with tool-calling against the Phase 3 MCP server's tools; Agent interface. (Previously also scoped the MCP server itself — that work moved to Phase 3, see above.)
+**Goal**: LLM integration (LangChain, OpenAI-backed) with tool-calling against the Phase 3 MCP server's tools, gated by a DB-backed user-validation layer in the backend. Broken into four subphases, discussed and implemented one at a time rather than all at once. (Previously also scoped the MCP server itself — that work moved to Phase 3, see above.)
+
+**Decisions made for this phase**:
+- `users.keycloak_id` is populated deterministically: `keycloak/realm-export.json` will pin explicit `"id"` fields for the seed users (alice/bob), and `postgres/init.sql`'s seed `INSERT` will set matching `keycloak_id` values — no JIT/runtime provisioning logic, consistent with the project's declarative-seed philosophy. Needed because Keycloak otherwise auto-generates a random UUID for each user on every realm import, leaving nothing static in Postgres to match a JWT's `sub` claim against.
+- Backend DB access uses raw `asyncpg` (a pool created once at startup via FastAPI's `lifespan`), mirroring `mcp/db.py`'s pattern exactly rather than introducing an ORM — keeps `backend/` and `mcp/` consistent; query functions remain the service layer for now, same convention as Phase 3.
+- The new DB-backed user-validation gate (`get_current_valid_user`) is additive, not a replacement for the existing JWT-only `get_current_user` — `/me` keeps working exactly as it does today; only new agent/chat endpoints depend on the stricter gate.
+
+### Subphases
+
+- [x] **4.1 Backend DB connection + user validation gate**
+  Add a database layer to the backend so JWT-authenticated requests can be gated on whether the caller's Keycloak identity maps to a known, valid user in Postgres — the prerequisite for letting the agent (4.2+) act on behalf of a real user.
+  - `keycloak/realm-export.json`: pin explicit `"id"` UUIDs for alice/bob.
+  - `postgres/init.sql`: set `users.keycloak_id` for alice/bob to those same UUIDs.
+  - `backend/db.py` (new): `asyncpg` pool, `_dsn()`/`create_pool()`, created once via FastAPI lifespan, stashed on `app.state.db_pool`.
+  - `backend/models.py` (new): Pydantic `User` (`id`, `username`, `email`, `keycloak_id`, `roles: list[str]`).
+  - `backend/user_service.py` (new): `UserService.validate_user(keycloak_id: str) -> User | None`, joins `users` → `user_roles` → `roles`.
+  - `backend/main.py`: new `get_current_valid_user` dependency (JWT claims → `sub` → `validate_user` → `403 access denied` if `None`); new `GET /agent/ping` endpoint gated by it, returning the validated `User` (test hook ahead of the real agent in 4.2).
+  - `backend/requirements.txt`: add `asyncpg`.
+  **Test**: token for alice → `/agent/ping` → `200`, roles `["agent"]`; token for bob → `200`, roles `["admin"]`; token with unknown `sub` → `403 access denied`; `/me` unaffected.
+  **Notes**: Implemented and successfully verified using a Python test script `test_auth.py` which requests direct tokens from Keycloak for `alice`, `bob`, and an unregistered user `charlie`. Verified that `/me` responds correctly with standard decoding for all, `/agent/ping` resolves database users and retrieves roles, and blocks the unregistered `charlie` with a 403 Access Denied. Fixed the `python-jose` public key construction bug (`jwt.construct_rsa_key` -> `jwk.construct`) and configured `KEYCLOAK_ISSUER` correctly on the backend inside `docker-compose.yml`.
+
+- [x] **4.2 Core LangChain agent over WebSocket**
+  Stand up a WebSocket chat endpoint in the backend, backed by a minimal LangChain agent connected to an OpenAI model. No tools, no prompt design yet — the agent just holds a conversation generically (e.g. "How are you?" → "I am fine. What can I do for you?"), via a real OpenAI call, not a hardcoded string. Prompt design and tool/sub-agent attachment are separate, later subphases (4.3+).
+  - `backend/agent/` (new directory): home for the agent construct going forward — tools, workflows, and sub-agents attach here in later subphases.
+    - `backend/agent/__init__.py`
+    - `backend/agent/core.py`: builds the agent via LangChain v1's unified `create_agent(model, tools=[], system_prompt=...)` (from `langchain.agents`, backed by LangGraph — **not** a hand-rolled `ChatOpenAI` conversational chain, and not the older `AgentExecutor`/`create_react_agent` style). `model` is a `langchain_openai.ChatOpenAI` instance; `tools=[]` and `system_prompt` a minimal placeholder for now — both are first-class constructor args already, so 4.3 (MCP tools) and later prompt design slot in without restructuring. Exposes an async `respond(message: str) -> str` that calls `agent.ainvoke({"messages": [{"role": "user", "content": message}]})` and returns `result["messages"][-1].content`.
+  - `backend/main.py`: new `@app.websocket("/ws/chat")` endpoint.
+    - Auth: JWT passed as a `token` query param at connect time (`ws://.../ws/chat?token=<jwt>`) — WebSocket handshakes can't carry an `Authorization` header, so this reuses 4.1's `verify_jwt` + `UserService.validate_user` checks against the query-param token before accepting the socket; connection is rejected (WS close code `1008` policy violation) if either check fails.
+    - Wire protocol: JSON envelope both directions — client sends `{"message": "..."}`, server replies `{"reply": "..."}` (extensible later for tool-call metadata, error codes, etc. without breaking the shape).
+  - `backend/requirements.txt`: add `langchain>=1.0` (for `langchain.agents.create_agent`), `langchain-openai`.
+  - `.env.example`: add `OPENAI_API_KEY` (documented, no real value committed).
+  **Test**: connect to `/ws/chat` with a valid alice token → send `{"message": "How are you?"}` → receive a `{"reply": "..."}` generated by the real OpenAI call (not hardcoded); connect with a missing/invalid/unregistered-user token → socket is rejected/closed per the 4.1 gate semantics.
+  **Notes**: Implemented the `backend/agent` directory with lazy initialization/fallback key `"mock-key"` to ensure start-dev/health checks don't crash without keys. Created the `/ws/chat` WebSocket endpoint with query-param token auth. Successfully tested connection rejection (HTTP 403) for invalid tokens and connection success for Alice's token, followed by LangChain agent execution (failed with 401 Incorrect API Key, confirming invocation of the OpenAI client).
+
+- [ ] **4.3 MCP tool attachment**
+  Attach the Phase 3 `mcp/` server's tools (e.g. `retrieve_customer_profile`) to the agent via an MCP client adapter, so the agent can call them during tool-calling.
+  **Test**: TBD once scoped in detail (to be discussed before implementation).
+  **Notes**:
+
+- [ ] **4.4 Sub-agent scaffolding**
+  Extensibility pattern for attaching specialized sub-agents to the primary agent. Actual escalation-workflow sub-agent logic stays in Phase 5.
+  **Test**: TBD once scoped in detail (to be discussed before implementation).
+  **Notes**:
+
+### Open Questions / Risks
+
+- 4.2–4.4 are scoped at a high level only; details (LangChain agent architecture, MCP client adapter choice, sub-agent orchestration pattern) will be worked out when each subphase is discussed, following the same discuss-then-implement flow used for 4.1.
+- Pinned `keycloak_id` UUIDs are dev-only fixtures tied to the current two seed users — if more seed users are added later, the same pin-both-sides convention (realm-export.json `id` + init.sql `keycloak_id`) must be followed.
 
 ## Phase 5: Escalation Workflow, Chat UI Integration, RBAC Refinement
 

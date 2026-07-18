@@ -1,13 +1,48 @@
 {
   "realm": "assistant",
   "enabled": true,
+  "requiredActions": [
+    {
+      "alias": "CONFIGURE_TOTP",
+      "name": "Configure Totp",
+      "providerId": "CONFIGURE_TOTP",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 10
+    },
+    {
+      "alias": "UPDATE_PASSWORD",
+      "name": "Update Password",
+      "providerId": "UPDATE_PASSWORD",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 30
+    },
+    {
+      "alias": "UPDATE_PROFILE",
+      "name": "Update Profile",
+      "providerId": "UPDATE_PROFILE",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 20
+    },
+    {
+      "alias": "VERIFY_EMAIL",
+      "name": "Verify Email",
+      "providerId": "VERIFY_EMAIL",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 50
+    }
+  ],
   "clients": [
     {
       "clientId": "frontend-spa",
       "publicClient": true,
       "protocol": "openid-connect",
       "redirectUris": ["*"],
-      "webOrigins": ["*"]
+      "webOrigins": ["*"],
+      "directAccessGrantsEnabled": true
     },
     {
       "clientId": "backend-service",
@@ -24,18 +59,34 @@
   },
   "users": [
     {
+      "id": "a11ce000-0000-0000-0000-000000000000",
       "username": "alice",
       "enabled": true,
+      "emailVerified": true,
       "email": "alice@example.com",
-      "credentials": [{"type": "password", "value": "12345"}],
+      "credentials": [{"type": "password", "value": "12345", "temporary": false}],
+      "requiredActions": [],
       "realmRoles": ["agent"]
     },
     {
+      "id": "b0b00000-0000-0000-0000-000000000000",
       "username": "bob",
       "enabled": true,
+      "emailVerified": true,
       "email": "bob@example.com",
-      "credentials": [{"type": "password", "value": "10001"}],
+      "credentials": [{"type": "password", "value": "10001", "temporary": false}],
+      "requiredActions": [],
       "realmRoles": ["admin"]
+    },
+    {
+      "id": "c0000000-0000-0000-0000-000000000000",
+      "username": "charlie",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "charlie@example.com",
+      "credentials": [{"type": "password", "value": "charlie", "temporary": false}],
+      "requiredActions": [],
+      "realmRoles": ["agent"]
     }
   ]
 }

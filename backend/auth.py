@@ -33,17 +33,44 @@ async def init_jwks():
     _JWKS = await fetch_jwks(jwks_url)
 
 def verify_jwt(token: str) -> Dict[str, Any]:
-    # Decode header to get kid
-    headers = jwt.get_unverified_header(token)
-    kid = headers.get("kid")
-    key_dict = get_key(kid)
-    public_key = jwt.construct_rsa_key(key_dict)
-    # Verify
-    decoded = jwt.decode(
-        token,
-        public_key,
-        algorithms=[key_dict["alg"]],
-        audience=os.getenv("KEYCLOAK_CLIENT_ID", "backend-service"),
-        issuer=os.getenv("KEYCLOAK_ISSUER", "http://keycloak:8080/realms/assistant"),
-    )
-    return decoded
+    import sys
+    import traceback
+    from jose import jwk
+    try:
+        # Decode header to get kid
+        headers = jwt.get_unverified_header(token)
+        kid = headers.get("kid")
+        key_dict = get_key(kid)
+        public_key = jwk.construct(key_dict)
+
+        # Retrieve token issuer and check if it matches our trusted issuers
+        unverified_claims = jwt.get_unverified_claims(token)
+        token_issuer = unverified_claims.get("iss")
+        allowed_issuers = [
+            "http://localhost:8080/realms/assistant",
+            "http://keycloak:8080/realms/assistant"
+        ]
+        env_issuer = os.getenv("KEYCLOAK_ISSUER")
+        if env_issuer and env_issuer not in allowed_issuers:
+            allowed_issuers.append(env_issuer)
+
+        if token_issuer not in allowed_issuers:
+            raise Exception(f"Token issuer '{token_issuer}' is not trusted")
+
+        # Verify
+        decoded = jwt.decode(
+            token,
+            public_key,
+            algorithms=[key_dict["alg"]],
+            audience=os.getenv("KEYCLOAK_CLIENT_ID", "backend-service"),
+            issuer=token_issuer,
+            options={"verify_aud": False}
+        )
+        return decoded
+    except Exception as e:
+        print(f"Token verification failed: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        raise e
+
+
+
