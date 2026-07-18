@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Keycloak from 'keycloak-js';
+import { Chat } from './Chat';
 
 // Keycloak configuration – matches the realm‑export.json
 const keycloak = new Keycloak({
@@ -9,43 +10,42 @@ const keycloak = new Keycloak({
 });
 
 export const App: React.FC = () => {
-  const [claims, setClaims] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const didInit = useRef(false);
 
   useEffect(() => {
-    // Initialize Keycloak; "login-required" forces a redirect if not logged in
+    // Guard against React.StrictMode's double effect invocation in dev —
+    // keycloak-js only supports calling init() once per instance; a second
+    // call while the first is still processing the redirect's auth code
+    // causes a login redirect loop.
+    if (didInit.current) return;
+    didInit.current = true;
+
+    // Initialize Keycloak; "check-sso" runs the SSO check in a hidden iframe
+    // instead of a full-page redirect, so it can't race/collide with the
+    // top-level navigation the way "login-required" did. If there's no SSO
+    // session, we fall back to an explicit keycloak.login() redirect.
     keycloak
-      .init({ onLoad: 'login-required', pkceMethod: 'S256' })
+      .init({
+        onLoad: 'check-sso',
+        pkceMethod: 'S256',
+        silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
+        checkLoginIframe: false,
+      })
       .then((authenticated) => {
         if (!authenticated) {
-          // Should never happen because login-required forces a login
-          console.warn('User not authenticated');
+          void keycloak.login();
           return;
         }
-        // Once we have a token, call the backend /me endpoint
-        fetch('http://localhost:8000/me', {
-          headers: {
-            Authorization: `Bearer ${keycloak.token}`,
-          },
-        })
-          .then((res) => {
-            if (!res.ok) throw new Error('Backend call failed');
-            return res.json();
-          })
-          .then((data) => {
-            setClaims(data);
-          })
-          .catch((err) => console.error(err))
-          .finally(() => setLoading(false));
+        setAuthenticated(true);
+        setAuthLoading(false);
       })
       .catch((err) => console.error('Keycloak init error', err));
   }, []);
 
-  if (loading) return <div>Loading…</div>;
-  return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-      <h1>🛡️ Authenticated!</h1>
-      <pre style={{ background: '#f0f0f0', padding: '1rem' }}>{JSON.stringify(claims, null, 2)}</pre>
-    </div>
-  );
+  if (authLoading) return <div>Loading…</div>;
+  if (!authenticated) return <div>Redirecting to login…</div>;
+
+  return <Chat token={keycloak.token!} />;
 };

@@ -1,6 +1,7 @@
 import os
 import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from auth import init_jwks, verify_jwt
 from db import create_pool
@@ -9,6 +10,12 @@ from user_service import UserService
 from agent import respond
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 security = HTTPBearer()
 
 @app.on_event("startup")

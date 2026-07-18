@@ -5,4 +5,6 @@ httpx
 asyncpg
 langchain>=1.0
 langchain-openai
+langchain-mcp-adapters
+
 

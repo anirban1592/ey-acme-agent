@@ -54,6 +54,8 @@ _(Fill in as decisions are made — placeholders below.)_
 | 2026-07-18 | Phase 4.2: the `/ws/chat` WebSocket endpoint authenticates via a `token` query param at connect time (not an `Authorization` header, which WebSocket handshakes can't carry), reusing 4.1's `verify_jwt` + `UserService.validate_user` checks; the socket is rejected with close code `1008` if either check fails. Wire protocol is a JSON envelope (`{"message": ...}` in, `{"reply": ...}` out) rather than plain text, so later subphases can add metadata without changing the message shape. |
 | 2026-07-18 | Sourced `OPENAI_API_KEY` in `docker-compose.yml` backend service environment, and implemented fallback key `"mock-key"` in `backend/agent/core.py` to prevent import-time crashes and allow container health checks to succeed when no real key is set. |
 | 2026-07-18 | Updated `verify_jwt` in `backend/auth.py` to dynamically whitelist both `localhost:8080` (host-to-container) and `keycloak:8080` (container-to-container) token issuer claims to support testing inside docker and runtime chat outside docker. |
+| 2026-07-18 | Phase 4's scope now explicitly includes end-to-end UI integration through the auth layer (login → JWT → WebSocket → agent → response), not just backend agent work — Phase 5's originally-listed "WebSocket-based chat UI integration" moved into Phase 4.3, so Phase 5 is now escalation workflow + RBAC refinement only. |
+| 2026-07-18 | Phase 4.3's chat UI reuses the existing Keycloak JS adapter's `onLoad: 'login-required'` gate (`frontend/src/App.tsx`, Phase 1.4) as the protected-page mechanism — no router or new page added, since the app stays a single page and unauthenticated visits already redirect to Keycloak login before anything renders. |
 
 
 ## How to Run Locally
