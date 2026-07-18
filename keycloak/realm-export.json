@@ -1,0 +1,41 @@
+{
+  "realm": "assistant",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "frontend-spa",
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "redirectUris": ["*"],
+      "webOrigins": ["*"]
+    },
+    {
+      "clientId": "backend-service",
+      "secret": "super-secret",
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect"
+    }
+  ],
+  "roles": {
+    "realm": [
+      {"name": "agent"},
+      {"name": "admin"}
+    ]
+  },
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "credentials": [{"type": "password", "value": "12345"}],
+      "realmRoles": ["agent"]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.com",
+      "credentials": [{"type": "password", "value": "10001"}],
+      "realmRoles": ["admin"]
+    }
+  ]
+}
