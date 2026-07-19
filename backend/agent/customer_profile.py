@@ -8,17 +8,7 @@ from .context import AgentContext
 
 from services import CustomerService
 
-# Owns its own ChatOpenAI instance rather than importing core.py's `model` —
-# avoids a core.py <-> customer_profile.py circular import (core.py imports
-# consult_customer_profile_agent below), and mirrors this codebase's existing
-# convention of modules owning their own config independently (mcp/db.py
-# duplicates backend/db.py's DSN/pool logic rather than sharing it).
-api_key = os.getenv("OPENAI_API_KEY") or "mock-key"
-_model = ChatOpenAI(
-    model=os.getenv("OPENAI_MODEL_NAME", "gpt-5.1"),
-    temperature=0.0,
-    openai_api_key=api_key,
-)
+
 
 
 @tool
@@ -31,7 +21,7 @@ async def get_customer_profile(customer_name: str) -> str:
 
 
 customer_profile_agent = create_agent(
-    model=_model,
+    model=os.getenv("CUSTOMER_PROFILE_AGENT_MODEL", "openai:gpt-5-mini"),
     tools=[get_customer_profile],
     system_prompt=(
         "You answer questions about a customer's CRM/account profile using "

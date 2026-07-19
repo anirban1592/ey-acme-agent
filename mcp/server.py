@@ -4,8 +4,8 @@ import os
 from fastmcp import Context, FastMCP
 from fastmcp.server.lifespan import lifespan
 
-from db import create_pool, fetch_customer_issues
-from models import Issue
+from db import create_pool, fetch_customer_issues, fetch_issue_updates
+from models import Issue, IssueWithUpdates
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,9 +30,9 @@ async def retrieve_customer_profile(
 ) -> list[Issue]:
     """Return the issues for a customer, scoped to the caller's roles.
 
-    Issues are filtered to those where issues.domain matches any of roles,
+    Issues are filtered to those where issues.persona matches any of roles,
     except when 'admin' is among roles, in which case all of the customer's
-    issues are returned regardless of domain.
+    issues are returned regardless of persona.
     """
     logger.info(
         "retrieve_customer_profile called with customer_name=%r roles=%r",
@@ -41,7 +41,27 @@ async def retrieve_customer_profile(
     )
     pool = ctx.lifespan_context["pool"]
     return await fetch_customer_issues(pool, customer_name, roles)
-    
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def retrieve_issue_updates(
+    issue_id: int, roles: list[str], ctx: Context
+) -> IssueWithUpdates | None:
+    """Return an issue and all of its issue_updates (comments/history),
+    newest-first, scoped to the caller's roles.
+
+    Returns None if the issue does not exist, or if the caller's roles
+    don't include the issue's persona and aren't admin — deliberately not
+    distinguishing the two cases, mirroring retrieve_customer_profile's
+    existing no-existence-leak convention.
+    """
+    logger.info(
+        "retrieve_issue_updates called with issue_id=%r roles=%r",
+        issue_id,
+        roles,
+    )
+    pool = ctx.lifespan_context["pool"]
+    return await fetch_issue_updates(pool, issue_id, roles)
 
 
 if __name__ == "__main__":

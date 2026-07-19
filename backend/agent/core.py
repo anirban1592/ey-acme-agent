@@ -4,25 +4,15 @@ import os
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRequest, dynamic_prompt
 from langchain_core.messages import HumanMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_mcp_adapters.interceptors import MCPToolCallRequest
-from langchain_openai import ChatOpenAI
 
 from models import User
 
 from .context import AgentContext
 from .customer_profile import consult_customer_profile_agent
+from .escalation_agent import consult_escalation_agent
+from .mcp_client import get_mcp_tools
+from .summarize_agent import consult_summarizer_agent
 
-# Initialize the OpenAI model
-# It uses the OPENAI_API_KEY environment variable by default
-api_key = os.getenv("OPENAI_API_KEY") or "mock-key"
-
-# Create the ChatOpenAI model
-model = ChatOpenAI(
-    model=os.getenv("OPENAI_MODEL_NAME", "gpt-5.1"),
-    temperature=0.0,
-    openai_api_key=api_key
-)
 
 BASE_SYSTEM_PROMPT = "You are a helpful agent. Your job is to process user queries. You are looking after a database with the help of tools, agents, sub-agents, and workflows, but right now you have access to a bunch of tools which you can use to query the database of all the issues. Whenever a user asks a particular query, decide if you want to use a particular tool and execute the tool, and then curate the final response. "
 
@@ -37,36 +27,6 @@ def role_aware_prompt(request: ModelRequest) -> str:
         f"call regardless of what role you ask for — do not claim or imply "
         f"access to data beyond what tool results actually return."
     )
-
-
-async def inject_role_interceptor(request: MCPToolCallRequest, handler):
-    """Overwrites the 'roles' tool-call argument with the authenticated
-    caller's actual roles, taken from the per-invocation AgentContext —
-    never from whatever the LLM put in its tool call. This is the real
-    RBAC enforcement point; role_aware_prompt above is only a convenience
-    for the model, not a security boundary.
-    """
-    if request.name == "retrieve_customer_profile":
-        ctx: AgentContext = request.runtime.context
-        request = request.override(args={**request.args, "roles": list(ctx.roles)})
-    return await handler(request)
-
-
-async def get_mcp_tools():
-    """
-    Initializes the MultiServerMCPClient and retrieves the tools from the MCP server.
-    """
-    client = MultiServerMCPClient(
-        {
-            "issues": {
-                "transport": "http",
-                "url": os.getenv("MCP_SERVER_URL", "http://mcp:9000/mcp"),
-            }
-        },
-        tool_interceptors=[inject_role_interceptor],
-    )
-    tools = await client.get_tools()
-    return tools
 
 
 _agent = None
@@ -85,9 +45,13 @@ async def get_agent():
     if _agent is None:
         async with _agent_lock:
             if _agent is None:
-                tools = (await get_mcp_tools()) + [consult_customer_profile_agent]
+                tools = (await get_mcp_tools()) + [
+                    consult_customer_profile_agent,
+                    consult_summarizer_agent,
+                    consult_escalation_agent,
+                ]
                 _agent = create_agent(
-                    model=model,
+                    model=os.getenv("MAIN_AGENT_MODEL", "openai:gpt-5.1"),
                     tools=tools,
                     middleware=[role_aware_prompt],
                     context_schema=AgentContext,

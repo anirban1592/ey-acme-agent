@@ -9,9 +9,20 @@ class Issue(BaseModel):
     title: str
     description: str | None
     status: str
-    domain: str | None
     persona: str | None
     reporter: str | None
     last_updated_by: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class IssueUpdate(BaseModel):
+    id: int
+    issue_id: int
+    comment: str
+    created_at: datetime
+
+
+class IssueWithUpdates(BaseModel):
+    issue: Issue
+    updates: list[IssueUpdate]

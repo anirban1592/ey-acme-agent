@@ -93,7 +93,6 @@ CREATE TABLE IF NOT EXISTS issues (
     title TEXT NOT NULL,
     description TEXT,
     status_id INT REFERENCES statuses(id) ON DELETE RESTRICT DEFAULT 1,
-    domain TEXT,
     persona TEXT CHECK (persona IN ('sales', 'operations', 'support')),
     reporter_id INT REFERENCES users(id) ON DELETE SET NULL,
     last_updated_by_id INT REFERENCES users(id) ON DELETE SET NULL,
