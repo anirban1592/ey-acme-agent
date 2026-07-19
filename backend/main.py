@@ -1,4 +1,5 @@
 import os
+import uuid
 import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +8,7 @@ from auth import init_jwks, verify_jwt
 from db import create_pool
 from models import User
 from services import UserService
-from agent import respond
+from agent import respond, close_checkpointer
 
 app = FastAPI()
 app.add_middleware(
@@ -28,6 +29,7 @@ async def startup_event():
 async def shutdown_event():
     if hasattr(app.state, "db_pool") and app.state.db_pool:
         await app.state.db_pool.close()
+    await close_checkpointer()
 
 @app.get("/health")
 async def health():
@@ -98,9 +100,10 @@ async def websocket_chat(websocket: WebSocket):
             if not message_text:
                 await websocket.send_json({"error": "Missing message content"})
                 continue
-            
-            reply_text = await respond(message_text, user)
-            await websocket.send_json({"reply": reply_text})
+
+            thread_id = data.get("thread_id") or str(uuid.uuid4())
+            reply_text = await respond(message_text, user, thread_id)
+            await websocket.send_json({"reply": reply_text, "thread_id": thread_id})
     except WebSocketDisconnect:
         pass
     except Exception as e:

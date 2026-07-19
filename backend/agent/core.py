@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage
 
 from models import User
 
+from .checkpointer import get_checkpointer
 from .context import AgentContext
 from .customer_profile import consult_customer_profile_agent
 from .escalation_agent import consult_escalation_agent
@@ -50,24 +51,28 @@ async def get_agent():
                     consult_summarizer_agent,
                     consult_escalation_agent,
                 ]
+                checkpointer = await get_checkpointer()
                 _agent = create_agent(
                     model=os.getenv("MAIN_AGENT_MODEL", "openai:gpt-5.1"),
                     tools=tools,
                     middleware=[role_aware_prompt],
                     context_schema=AgentContext,
+                    checkpointer=checkpointer,
                 )
     return _agent
 
 
-async def respond(message: str, user: User) -> str:
+async def respond(message: str, user: User, thread_id: str) -> str:
     """
     Invokes the LangChain agent with the user message, scoped to the
-    authenticated caller via AgentContext, and returns the final AI reply.
+    authenticated caller via AgentContext, and persisted/resumed via the
+    Redis checkpointer keyed on thread_id. Returns the final AI reply.
     """
     agent = await get_agent()
     input_data = {"messages": [HumanMessage(content=message)]}
     context = AgentContext(username=user.username, roles=user.roles)
-    result = await agent.ainvoke(input_data, context=context)
+    config = {"configurable": {"thread_id": thread_id}}
+    result = await agent.ainvoke(input_data, context=context, config=config)
 
     messages = result.get("messages", [])
     if messages:

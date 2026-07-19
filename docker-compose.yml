@@ -30,6 +30,8 @@ services:
       - POSTGRES_PORT=5432
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - MCP_SERVER_URL=http://mcp:9000/mcp
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "8000:8000"
     depends_on:
@@ -39,6 +41,8 @@ services:
         condition: service_healthy
       mcp:
         condition: service_started
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -94,6 +98,19 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://localhost:9000/mcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8
+    container_name: redis
+    ports:
+      - "6379:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
