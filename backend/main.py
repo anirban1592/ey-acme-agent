@@ -1,5 +1,7 @@
 import os
 import uuid
+from datetime import datetime, timezone
+
 import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +11,7 @@ from db import create_pool
 from models import User
 from services import UserService
 from agent import respond, close_checkpointer
+from agent.response_types import ErrorResponse, resolve_role_context
 
 app = FastAPI()
 app.add_middleware(
@@ -92,23 +95,33 @@ async def websocket_chat(websocket: WebSocket):
         return
 
     await websocket.accept()
-    
+
+    def _error_envelope() -> dict:
+        return dict(
+            request_id=str(uuid.uuid4()),
+            timestamp=datetime.now(timezone.utc),
+            role_context=resolve_role_context(user.roles),
+        )
+
     try:
         while True:
             data = await websocket.receive_json()
             message_text = data.get("message")
+            thread_id = data.get("thread_id") or str(uuid.uuid4())
             if not message_text:
-                await websocket.send_json({"error": "Missing message content"})
+                error = ErrorResponse(message="Missing message content", code="missing_message", **_error_envelope())
+                await websocket.send_json({"reply": error.model_dump(mode="json"), "thread_id": thread_id})
                 continue
 
-            thread_id = data.get("thread_id") or str(uuid.uuid4())
-            reply_text = await respond(message_text, user, thread_id)
-            await websocket.send_json({"reply": reply_text, "thread_id": thread_id})
+            response = await respond(message_text, user, thread_id)
+            await websocket.send_json({"reply": response.model_dump(mode="json"), "thread_id": thread_id})
     except WebSocketDisconnect:
         pass
     except Exception as e:
         try:
-            await websocket.send_json({"error": f"Error: {str(e)}"})
+            fallback_thread_id = locals().get("thread_id") or str(uuid.uuid4())
+            error = ErrorResponse(message=str(e), code="websocket_error", **_error_envelope())
+            await websocket.send_json({"reply": error.model_dump(mode="json"), "thread_id": fallback_thread_id})
         except Exception:
             pass
 

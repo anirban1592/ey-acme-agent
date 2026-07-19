@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useChatSocket } from './useChatSocket';
+import { ResponseRouter } from './components/ResponseRouter';
 
 export const Chat: React.FC<{ token: string }> = ({ token }) => {
   const { messages, connectionState, sendMessage } = useChatSocket(token);
@@ -27,22 +28,39 @@ export const Chat: React.FC<{ token: string }> = ({ token }) => {
           marginBottom: '1rem',
         }}
       >
-        {messages.map((m, i) => (
-          <div key={i} style={{ textAlign: m.role === 'user' ? 'right' : 'left', margin: '0.5rem 0' }}>
-            <span
-              style={{
-                display: 'inline-block',
-                padding: '0.5rem 0.75rem',
-                borderRadius: 12,
-                background: m.role === 'user' ? '#0b93f6' : m.role === 'agent' ? '#e5e5ea' : '#ffe0e0',
-                color: m.role === 'user' ? '#fff' : '#000',
-                maxWidth: '80%',
-              }}
-            >
-              {m.text}
-            </span>
-          </div>
-        ))}
+        {messages.map((m, i) =>
+          m.role === 'user' ? (
+            <div key={i} style={{ textAlign: 'right', margin: '0.5rem 0' }}>
+              <span
+                style={{
+                  display: 'inline-block',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: 12,
+                  background: '#0b93f6',
+                  color: '#fff',
+                  maxWidth: '80%',
+                }}
+              >
+                {m.text}
+              </span>
+            </div>
+          ) : (
+            <div key={i} style={{ textAlign: 'left', margin: '0.5rem 0' }}>
+              <div
+                style={{
+                  display: 'inline-block',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: 12,
+                  background: m.response.type === 'error' ? 'transparent' : '#e5e5ea',
+                  color: '#000',
+                  maxWidth: '100%',
+                }}
+              >
+                <ResponseRouter response={m.response} />
+              </div>
+            </div>
+          ),
+        )}
       </div>
       <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
         <input

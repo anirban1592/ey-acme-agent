@@ -3,8 +3,11 @@ import os
 from pathlib import Path
 
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage
+
+from ..response_types import DUMMY_RECIPIENT_EMAIL, EscalationEmailContent, EscalationEmailDraft
 
 _SKILLS_DIR = Path(__file__).parent / "skills"
 _SKILL_FILES = {
@@ -21,9 +24,10 @@ ESCALATION_SYSTEM_PROMPT = (
     "'customer_email' skill.\n\n"
     "Call load_skill with the chosen skill name to retrieve its tone "
     "options and structure guidance, pick the single best-fitting tone for "
-    "the situation, then draft a complete email (Subject + body) following "
-    "that tone's guidance. Return only the drafted email — do not claim it "
-    "has been sent, since a human still needs to review and send it."
+    "the situation, then produce a subject line and a body following that "
+    "tone's guidance. Do not claim the email has been sent, since a human "
+    "still needs to review and send it — the recipient address is filled "
+    "in separately, not by you."
 )
 
 
@@ -62,6 +66,7 @@ async def get_escalation_agent():
                     model=os.getenv("ESCALATION_AGENT_MODEL", "openai:gpt-5-mini"),
                     tools=[load_skill],
                     system_prompt=ESCALATION_SYSTEM_PROMPT,
+                    response_format=ToolStrategy(EscalationEmailDraft),
                     name="escalation_agent",
                 )
     return _escalation_agent
@@ -76,4 +81,6 @@ async def consult_escalation_agent(query: str) -> str:
     to escalate, notify, or draft an email about an issue or account."""
     agent = await get_escalation_agent()
     result = await agent.ainvoke({"messages": [HumanMessage(content=query)]})
-    return result["messages"][-1].content
+    draft: EscalationEmailDraft = result["structured_response"]
+    content = EscalationEmailContent(to=DUMMY_RECIPIENT_EMAIL, **draft.model_dump())
+    return content.model_dump_json()
