@@ -2,11 +2,13 @@ import asyncio
 import os
 
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain.tools import tool, ToolRuntime
 from langchain_core.messages import HumanMessage
 
 from ..context import AgentContext
 from ..mcp_client import get_mcp_tools
+from ..response_types import BulletSummaryContent
 
 
 SUMMARIZE_SYSTEM_PROMPT = (
@@ -15,17 +17,15 @@ SUMMARIZE_SYSTEM_PROMPT = (
     "being asked about, then call the retrieve_issue_updates tool exactly "
     "once to fetch that issue's current details plus its full update "
     "history (returned newest-first).\n\n"
-    "From the tool result, produce a single, concise natural-language "
-    "summary that covers:\n"
-    "1. The issue's current status — its state (e.g. open/in-progress/"
-    "resolved/closed) and any other current-state fields returned.\n"
-    "2. A synthesis, not a raw list, of all the updates in its history: "
-    "what happened, in what order, and how the situation evolved — call "
-    "out key turning points rather than restating every field.\n\n"
+    "From the tool result, produce a heading (the issue's current status — "
+    "its state, e.g. open/in-progress/resolved/closed) and a list of bullet "
+    "points that synthesize, not just list, the update history: what "
+    "happened, in what order, and how the situation evolved — call out key "
+    "turning points rather than restating every field.\n\n"
     "If the tool returns null/no result (the issue does not exist, or the "
-    "caller does not have access to it), say so plainly and do not "
-    "fabricate a status or update history — never guess at an issue's "
-    "state when no data was returned."
+    "caller does not have access to it), use that as the heading and a "
+    "single point saying so plainly — never fabricate a status or update "
+    "history when no data was returned."
 )
 
 
@@ -62,6 +62,7 @@ async def get_summarizer_agent():
                     tools=tools,
                     system_prompt=SUMMARIZE_SYSTEM_PROMPT,
                     context_schema=AgentContext,
+                    response_format=ToolStrategy(BulletSummaryContent),
                     name="summarize_agent",
                 )
     return _summarizer_agent
@@ -79,4 +80,5 @@ async def consult_summarizer_agent(runtime: ToolRuntime[AgentContext], query: st
         {"messages": [HumanMessage(content=query)]},
         context=runtime.context,
     )
-    return result["messages"][-1].content
+    content: BulletSummaryContent = result["structured_response"]
+    return content.model_dump_json()

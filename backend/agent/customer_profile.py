@@ -1,10 +1,12 @@
 import os
 
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain.tools import tool, ToolRuntime
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from .context import AgentContext
+from .response_types import CustomerProfileContent
 
 from services import CustomerService
 
@@ -25,9 +27,14 @@ customer_profile_agent = create_agent(
     tools=[get_customer_profile],
     system_prompt=(
         "You answer questions about a customer's CRM/account profile using "
-        "the get_customer_profile tool, then summarize the relevant fields "
-        "concisely for the caller."
+        "the get_customer_profile tool. Report the customer_name and a "
+        "fields dict containing every other field the tool returned, with "
+        "every value converted to a string (or left null if the tool's "
+        "value was null). If the tool reports no profile was found, still "
+        "report the customer_name you looked up, and use an empty fields "
+        "dict."
     ),
+    response_format=ToolStrategy(CustomerProfileContent),
     name="customer_profile_agent",
 )
 
@@ -43,4 +50,5 @@ async def consult_customer_profile_agent(runtime: ToolRuntime[AgentContext], que
             "consult_customer_profile_agent is restricted to users with the 'admin' role."
         )
     result = await customer_profile_agent.ainvoke({"messages": [HumanMessage(content=query)]})
-    return result["messages"][-1].content
+    content: CustomerProfileContent = result["structured_response"]
+    return content.model_dump_json()

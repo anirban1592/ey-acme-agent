@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AgentResponseSchema, type AgentResponse } from './schemas/agentResponses';
 
-export type ChatMessage = {
-  role: 'user' | 'agent' | 'system';
-  text: string;
-};
+export type ChatMessage = { role: 'user'; text: string } | { role: 'agent'; response: AgentResponse };
 
 export type ConnectionState = 'connecting' | 'open' | 'closed';
 
@@ -16,6 +14,17 @@ function getCookie(name: string): string | undefined {
 
 function setCookie(name: string, value: string): void {
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 30}`;
+}
+
+function malformedPayloadResponse(): AgentResponse {
+  return {
+    type: 'error',
+    message: 'Malformed response from server',
+    code: 'invalid_payload',
+    request_id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    role_context: 'support',
+  };
 }
 
 export function useChatSocket(token: string | undefined) {
@@ -36,15 +45,14 @@ export function useChatSocket(token: string | undefined) {
     socket.onerror = () => setConnectionState('closed');
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.reply) {
-        if (data.thread_id) {
-          threadIdRef.current = data.thread_id;
-          setCookie(THREAD_ID_COOKIE, data.thread_id);
-        }
-        setMessages((prev) => [...prev, { role: 'agent', text: data.reply }]);
-      } else if (data.error) {
-        setMessages((prev) => [...prev, { role: 'system', text: `Error: ${data.error}` }]);
+      if (data.thread_id) {
+        threadIdRef.current = data.thread_id;
+        setCookie(THREAD_ID_COOKIE, data.thread_id);
       }
+
+      const parsed = AgentResponseSchema.safeParse(data.reply);
+      const response = parsed.success ? parsed.data : malformedPayloadResponse();
+      setMessages((prev) => [...prev, { role: 'agent', response }]);
     };
 
     return () => {
