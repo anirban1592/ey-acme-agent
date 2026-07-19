@@ -44,13 +44,14 @@ ORDER BY i.created_at DESC;
 
 
 async def fetch_customer_issues(
-    pool: asyncpg.Pool, customer_name: str, role: str
+    pool: asyncpg.Pool, customer_name: str, roles: list[str]
 ) -> list[Issue]:
-    is_admin = role.strip().lower() == "admin"
+    normalized_roles = [r.strip() for r in roles if r and r.strip()]
+    is_admin = any(r.lower() == "admin" for r in normalized_roles)
     query = _ISSUES_QUERY.format(
-        domain_filter="" if is_admin else "  AND i.domain ILIKE $2"
+        domain_filter="" if is_admin else "  AND i.domain ILIKE ANY($2::text[])"
     )
-    args = [customer_name] if is_admin else [customer_name, role]
+    args = [customer_name] if is_admin else [customer_name, normalized_roles]
     async with pool.acquire() as conn:
         rows = await conn.fetch(query, *args)
     return [Issue.model_validate(dict(row)) for row in rows]

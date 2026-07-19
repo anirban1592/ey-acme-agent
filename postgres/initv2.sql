@@ -22,6 +22,34 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 -- ------------------------------------------------------------
+-- Table: customer_details
+-- One-to-one extension of customers: profile/CRM-style fields used
+-- to answer "tell me about customer X" questions.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS customer_details (
+    customer_id INT PRIMARY KEY REFERENCES customers(id) ON DELETE CASCADE,
+    industry TEXT,
+    account_tier TEXT,
+    headquarters TEXT,
+    employee_count INT,
+    relationship_since DATE,
+    account_manager TEXT,       -- internal (acme) sales owner
+    support_lead TEXT,          -- internal (acme) support owner
+    operations_lead TEXT,       -- internal (acme) operations owner
+    executive_sponsor TEXT,     -- internal (acme) admin/exec owner
+    primary_contact_name TEXT,  -- customer-side primary contact
+    primary_contact_title TEXT,
+    primary_contact_email TEXT,
+    contract_value_arr NUMERIC(12,2),
+    renewal_date DATE,
+    products_services TEXT,
+    payment_terms TEXT,
+    sentiment TEXT,
+    risk_level TEXT CHECK (risk_level IN ('low', 'medium', 'high')),
+    notes TEXT
+);
+
+-- ------------------------------------------------------------
 -- Table: statuses
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS statuses (
@@ -117,6 +145,80 @@ INSERT INTO customers (name) VALUES
 ON CONFLICT DO NOTHING;
 
 -- ------------------------------------------------------------
+-- Seed: customer_details
+-- One row per customer; internal owners mirror the persona
+-- assignments used for issues (sales=bob, support=tony,
+-- operations=charlie, admin/exec=alice).
+-- ------------------------------------------------------------
+INSERT INTO customer_details (
+    customer_id, industry, account_tier, headquarters, employee_count,
+    relationship_since, account_manager, support_lead, operations_lead, executive_sponsor,
+    primary_contact_name, primary_contact_title, primary_contact_email,
+    contract_value_arr, renewal_date, products_services, payment_terms,
+    sentiment, risk_level, notes
+)
+VALUES
+    ((SELECT id FROM customers WHERE name = 'Deloitte'),
+     'Professional Services / Consulting', 'Enterprise', 'London, United Kingdom', 450000,
+     '2021-11-01', 'Bob Ramirez', 'Tony Marchetti', 'Charlie Osei', 'Alice Nguyen',
+     'Sarah Whitfield', 'Engagement Director', 'sarah.whitfield@deloitte.com',
+     780000.00, '2026-11-01', 'Full platform license, premium support tier', 'Net 45',
+     'Positive, long-tenured account', 'low',
+     'One of acme''s longest-standing enterprise relationships. Expects formal written status updates, particularly on open bugs.'),
+
+    ((SELECT id FROM customers WHERE name = 'Facebook'),
+     'Social Media / Technology', 'Enterprise', 'Menlo Park, California, USA', 65000,
+     '2023-09-01', 'Bob Ramirez', 'Tony Marchetti', 'Charlie Osei', 'Alice Nguyen',
+     'Marcus Bell', 'Procurement Manager', 'marcus.bell@facebook.com',
+     620000.00, '2026-09-01', 'Hardware procurement channel, standard support plan', 'Net 30',
+     'Positive', 'low',
+     'Fast-moving, high-volume account. Procurement decisions move quickly once quotes are in; keep finance turnaround tight.'),
+
+    ((SELECT id FROM customers WHERE name = 'Apple'),
+     'Consumer Electronics / Technology', 'Strategic (Prospective)', 'Cupertino, California, USA', 160000,
+     '2025-01-01', 'Bob Ramirez', 'Tony Marchetti', 'Charlie Osei', 'Alice Nguyen',
+     'Kevin Alvarez', 'Account Manager (Apple-side)', 'kevin.alvarez@apple.com',
+     NULL, NULL, 'Under evaluation', NULL,
+     'Cautious', 'high',
+     'Pre-contract account gated on compliance review. Do not treat as closed until compliance clears.'),
+
+    ((SELECT id FROM customers WHERE name = 'Samsung'),
+     'Consumer Electronics / Technology', 'Enterprise', 'Suwon, South Korea', 270000,
+     '2023-06-01', 'Bob Ramirez', 'Tony Marchetti', 'Charlie Osei', 'Alice Nguyen',
+     'Ji-hoon Park', 'Digital Commerce Manager', 'jihoon.park@samsung.com',
+     950000.00, '2027-06-01', 'Online store platform access, flash-sale onboarding support', 'Net 30',
+     'Positive, high-trust account', 'low',
+     'Runs large, time-sensitive campaigns (flash sales). Responsiveness during these windows is critical to the relationship.'),
+
+    ((SELECT id FROM customers WHERE name = 'Google'),
+     'Technology / Internet Services', 'Strategic', 'Mountain View, California, USA', 180000,
+     '2022-03-01', 'Bob Ramirez', 'Tony Marchetti', 'Charlie Osei', 'Alice Nguyen',
+     'Priya Shah', 'VP, Vendor Partnerships', 'priya.shah@google.com',
+     1400000.00, '2027-03-01', 'Enterprise support plan, custom integration package', 'Net 45',
+     'Neutral, pending contract decision', 'medium',
+     'Moves deliberately through procurement and compliance gates. Renewal outcome hinges on the pending technical questionnaire.')
+ON CONFLICT (customer_id) DO UPDATE SET
+    industry = EXCLUDED.industry,
+    account_tier = EXCLUDED.account_tier,
+    headquarters = EXCLUDED.headquarters,
+    employee_count = EXCLUDED.employee_count,
+    relationship_since = EXCLUDED.relationship_since,
+    account_manager = EXCLUDED.account_manager,
+    support_lead = EXCLUDED.support_lead,
+    operations_lead = EXCLUDED.operations_lead,
+    executive_sponsor = EXCLUDED.executive_sponsor,
+    primary_contact_name = EXCLUDED.primary_contact_name,
+    primary_contact_title = EXCLUDED.primary_contact_title,
+    primary_contact_email = EXCLUDED.primary_contact_email,
+    contract_value_arr = EXCLUDED.contract_value_arr,
+    renewal_date = EXCLUDED.renewal_date,
+    products_services = EXCLUDED.products_services,
+    payment_terms = EXCLUDED.payment_terms,
+    sentiment = EXCLUDED.sentiment,
+    risk_level = EXCLUDED.risk_level,
+    notes = EXCLUDED.notes;
+
+-- ------------------------------------------------------------
 -- Seed: statuses
 -- ------------------------------------------------------------
 INSERT INTO statuses (name) VALUES
@@ -130,6 +232,7 @@ ON CONFLICT DO NOTHING;
 -- Seed: roles
 -- ------------------------------------------------------------
 INSERT INTO roles (name) VALUES
+    ('agent'),
     ('admin'),
     ('sales'),
     ('operations'),

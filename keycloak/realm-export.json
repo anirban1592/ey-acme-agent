@@ -87,6 +87,16 @@
       "credentials": [{"type": "password", "value": "charlie", "temporary": false}],
       "requiredActions": [],
       "realmRoles": ["agent"]
+    },
+    {
+      "id": "99af8531-0af2-4b12-8c12-e49c46e52caf",
+      "username": "tony",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "tony@example.com",
+      "credentials": [{"type": "password", "value": "tony", "temporary": false}],
+      "requiredActions": [],
+      "realmRoles": ["agent"]
     }
   ]
 }

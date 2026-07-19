@@ -137,7 +137,7 @@ Done — all three subphases complete and verified end-to-end via docker-compose
 
 ### Open Questions / Risks
 
-- The `role` argument is currently trusted as a plain string from the caller (no JWT/auth validation inside the MCP server itself) — acceptable for now since Phase 4's agentic layer is expected to be the trusted caller, but worth revisiting once the MCP server has external-facing exposure.
+- ~~The `role` argument is currently trusted as a plain string from the caller (no JWT/auth validation inside the MCP server itself)~~ — **Resolved in Phase 4.5**: the MCP server still trusts the caller's `roles` list (unchanged design decision — the backend agent remains the trusted caller), but the backend now guarantees that value is always the authenticated user's actual DB-backed roles, never something the LLM chose, via a `tool_interceptors` hook. See Phase 4.5 below.
 - `issues.domain` only has two meaningful values in practice today (`agent`/`admin`, mirroring the `roles` table) — if new roles are introduced later, seed data and this tool's filter logic need to stay in sync with the `roles` table.
 
 ## Phase 4: Agentic Chat Layer
@@ -186,19 +186,27 @@ Done — all three subphases complete and verified end-to-end via docker-compose
   **Test**: load the app with no session → redirected to Keycloak login (existing 1.4 behavior, unchanged); log in as alice → chat UI renders and the WebSocket connects; send a message → it appears in the transcript, followed by the agent's real OpenAI-backed reply (from 4.2); reload the tab → re-authenticates and reconnects cleanly.
   **Notes**:
 
-- [ ] **4.4 MCP tool attachment**
+- [x] **4.4 MCP tool attachment**
   Attach the Phase 3 `mcp/` server's tools (e.g. `retrieve_customer_profile`) to the agent via an MCP client adapter, so the agent can call them during tool-calling.
   **Test**: TBD once scoped in detail (to be discussed before implementation).
-  **Notes**:
+  **Notes**: Retroactively checked off — this happened in practice as part of the 4.2/4.3 `backend/agent/core.py` rewrite (`get_mcp_tools()`/`MultiServerMCPClient`, lazy `get_agent()`), documented in the 2026-07-18 decision-log entries about moving `create_agent(...)` to lazy init and the `MCP_SERVER_URL` fix, rather than as its own discussed subphase.
 
-- [ ] **4.5 Sub-agent scaffolding**
-  Extensibility pattern for attaching specialized sub-agents to the primary agent. Actual escalation-workflow sub-agent logic stays in Phase 5.
-  **Test**: TBD once scoped in detail (to be discussed before implementation).
-  **Notes**:
+- [x] **4.5 RBAC-enforced MCP tool calls + dynamic, user-scoped system prompt**
+  Closed the open risk noted in Phase 3 (`role` trusted as a plain LLM-supplied string). The authenticated `User` resolved in `backend/main.py`'s `/ws/chat` handler (via `UserService.validate_user`, Phase 4.1) is now the only source of truth for role-scoping on every `retrieve_customer_profile` call — the LLM can no longer influence which role(s) get used, including via prompt injection.
+  - `backend/agent/context.py` (new): `AgentContext` dataclass (`username`, `roles: list[str]`) — per-invocation, non-LLM-controlled data.
+  - `backend/agent/core.py`: `create_agent(..., context_schema=AgentContext, middleware=[role_aware_prompt])` — `role_aware_prompt` is a `@dynamic_prompt`-decorated function (`langchain.agents.middleware`) that builds the system prompt per call from `request.runtime.context`, replacing the old static `SYSTEM_PROMPT`. `get_mcp_tools()`'s `MultiServerMCPClient` gets `tool_interceptors=[inject_role_interceptor]` (`langchain_mcp_adapters.interceptors.MCPToolCallRequest`) — for `retrieve_customer_profile` calls specifically, it unconditionally overwrites the `roles` argument with `AgentContext.roles` via `request.override(...)` before the call reaches the MCP server, regardless of what the LLM supplied. `respond(message, user)` now takes the authenticated `User` and builds `AgentContext(username=user.username, roles=user.roles)`, passed as `context=` to `agent.ainvoke(...)`. The existing lock-guarded `_agent` singleton is unaffected — `context` is per-`ainvoke()`, not baked into agent construction, so the shared agent instance stays safe across concurrent users.
+  - `backend/main.py`: `/ws/chat` now calls `respond(message_text, user)` instead of `respond(message_text)`.
+  - `mcp/server.py` / `mcp/db.py`: `retrieve_customer_profile`/`fetch_customer_issues` signature changed from `role: str` to `roles: list[str]` (a user can hold multiple roles via `user_roles`) — admin bypass triggers if `"admin"` is anywhere in `roles`; non-admin filtering uses `i.domain ILIKE ANY($2::text[])`; an empty `roles` list fails closed (matches nothing).
+  - `backend/requirements.txt`: pinned `langchain-mcp-adapters>=0.3.0` (confirmed installed version exposes `tool_interceptors`/`MCPToolCallRequest.override`).
+  **Test**: direct MCP calls with `roles=["agent"]`/`["admin"]`/`["support"]`/`["agent","admin"]` against the Google seed issue (`domain='agent'`) confirm admin-bypass-if-any-role-is-admin and correct multi-role union filtering. End-to-end via `/ws/chat`: alice (`roles=["agent"]`) and bob (`roles=["admin"]`) each see the correct scoped result; an adversarial message from alice explicitly asking the agent to call the tool with an admin role returns alice's normal agent-scoped result unchanged, proving the interceptor — not the LLM — controls the value. Two concurrent sessions (alice, bob) each get a system prompt referencing their own username, confirming the singleton agent doesn't leak context across requests.
+  **Notes**: Verified against current LangChain v1 / `langchain-mcp-adapters` docs via context7 before implementing (`context_schema`/`@dynamic_prompt`/`tool_interceptors` — not assumed from training data). MCP server's trust model is otherwise unchanged (still trusts `roles` as given — the backend remains the trusted caller per Phase 3's existing decision); this subphase only fixes *who controls the value the backend sends*.
+
+
 
 ### Open Questions / Risks
 
-- 4.3–4.5 are scoped at a high level only; details (chat UI styling/UX, MCP client adapter choice, sub-agent orchestration pattern) will be worked out when each subphase is discussed, following the same discuss-then-implement flow used for 4.1/4.2.
+- 4.3 and 4.6 are scoped at a high level only; details (chat UI styling/UX, sub-agent orchestration pattern) will be worked out when each subphase is discussed, following the same discuss-then-implement flow used for 4.1/4.2/4.5.
+- 4.5's role-collapsing behavior (admin bypass if `"admin"` is anywhere in a user's roles; otherwise `ILIKE ANY` over the full roles list) assumes seed data stays roughly in sync with the `roles` table — same caveat already noted in Phase 3.
 - Pinned `keycloak_id` UUIDs are dev-only fixtures tied to the current two seed users — if more seed users are added later, the same pin-both-sides convention (realm-export.json `id` + init.sql `keycloak_id`) must be followed.
 - 4.3 deliberately does not solve token refresh or WebSocket reconnection-on-expiry (still an open question carried over from Phase 1) — the MVP assumes a session short enough that the Keycloak token obtained at login stays valid for the WebSocket's lifetime.
 

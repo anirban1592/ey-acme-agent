@@ -29,6 +29,7 @@ services:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MCP_SERVER_URL=http://mcp:9000/mcp
     ports:
       - "8000:8000"
     depends_on:
@@ -36,6 +37,8 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      mcp:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -63,7 +66,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./postgres/initv2.sql:/docker-entrypoint-initdb.d/init.sql:ro
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:

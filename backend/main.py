@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from auth import init_jwks, verify_jwt
 from db import create_pool
 from models import User
-from user_service import UserService
+from services import UserService
 from agent import respond
 
 app = FastAPI()
@@ -99,7 +99,7 @@ async def websocket_chat(websocket: WebSocket):
                 await websocket.send_json({"error": "Missing message content"})
                 continue
             
-            reply_text = await respond(message_text)
+            reply_text = await respond(message_text, user)
             await websocket.send_json({"reply": reply_text})
     except WebSocketDisconnect:
         pass
