@@ -74,7 +74,7 @@
       "enabled": true,
       "emailVerified": true,
       "email": "bob@example.com",
-      "credentials": [{"type": "password", "value": "10001", "temporary": false}],
+      "credentials": [{"type": "password", "value": "12345", "temporary": false}],
       "requiredActions": [],
       "realmRoles": ["admin"]
     },
@@ -84,7 +84,7 @@
       "enabled": true,
       "emailVerified": true,
       "email": "charlie@example.com",
-      "credentials": [{"type": "password", "value": "charlie", "temporary": false}],
+      "credentials": [{"type": "password", "value": "12345", "temporary": false}],
       "requiredActions": [],
       "realmRoles": ["agent"]
     },
@@ -94,7 +94,7 @@
       "enabled": true,
       "emailVerified": true,
       "email": "tony@example.com",
-      "credentials": [{"type": "password", "value": "tony", "temporary": false}],
+      "credentials": [{"type": "password", "value": "12345", "temporary": false}],
       "requiredActions": [],
       "realmRoles": ["agent"]
     }

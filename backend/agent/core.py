@@ -11,6 +11,7 @@ from langchain_openai import ChatOpenAI
 from models import User
 
 from .context import AgentContext
+from .customer_profile import consult_customer_profile_agent
 
 # Initialize the OpenAI model
 # It uses the OPENAI_API_KEY environment variable by default
@@ -84,7 +85,7 @@ async def get_agent():
     if _agent is None:
         async with _agent_lock:
             if _agent is None:
-                tools = await get_mcp_tools()
+                tools = (await get_mcp_tools()) + [consult_customer_profile_agent]
                 _agent = create_agent(
                     model=model,
                     tools=tools,
