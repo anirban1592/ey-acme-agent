@@ -15,10 +15,12 @@ from .checkpointer import get_checkpointer
 from .context import AgentContext
 from .customer_profile import get_customer_profile
 from .escalation_agent import consult_escalation_agent
+from .guardrail import PromptInjectionGuardrailMiddleware
 from .mcp_client import get_mcp_tools
 from .response_types import (
     BulletSummaryContent,
     ChatMessageContent,
+    ChatMessageResponse,
     CompositeContent,
     CustomerProfileContent,
     ErrorResponse,
@@ -121,7 +123,7 @@ async def get_agent():
                 _agent = create_agent(
                     model=os.getenv("MAIN_AGENT_MODEL", "openai:gpt-5.1"),
                     tools=tools,
-                    middleware=[role_aware_prompt],
+                    middleware=[PromptInjectionGuardrailMiddleware(), role_aware_prompt],
                     context_schema=AgentContext,
                     checkpointer=checkpointer,
                     response_format=ToolStrategy(
@@ -165,6 +167,12 @@ async def respond(message: str, user: User, thread_id: str) -> list[WsResponse]:
         result = await agent.ainvoke(input_data, context=context, config=config)
 
         content = result.get("structured_response")
+        if content is None:
+            # Every normal completion is required to end in a
+            # structured_response (response_format=ToolStrategy(...)); None
+            # here unambiguously means a before_agent/before_model guardrail
+            # short-circuited via jump_to="end" before the model could run.
+            return [ChatMessageResponse(message=result["messages"][-1].content, **fresh_envelope())]
         if type(content) is CompositeContent:
             if not content.blocks:
                 raise ValueError("CompositeContent returned with no blocks")

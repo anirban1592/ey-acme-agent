@@ -14,10 +14,14 @@ from services import CustomerService
 
 
 @tool
-async def get_customer_profile(customer_name: str) -> str:
+async def get_customer_profile(runtime: ToolRuntime[AgentContext], customer_name: str) -> str:
     """Look up a customer's CRM/account profile by name — industry, account
     tier, account manager, contract value, risk level, sentiment, notes, etc.
     This is account/relationship data, NOT issue-tracking data."""
+    if "admin" not in runtime.context.roles:
+        raise PermissionError(
+            "consult_customer_profile_agent is restricted to users with the 'admin' role."
+        )
     profile = await CustomerService.get_customer_profile(customer_name)
     return profile.model_dump_json() if profile else f"No profile found for '{customer_name}'."
 

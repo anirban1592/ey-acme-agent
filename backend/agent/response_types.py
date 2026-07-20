@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
 
 class BaseResponse(BaseModel):
@@ -149,18 +149,64 @@ CONTENT_TO_RESPONSE: dict[type[BaseModel], type[BaseResponse]] = {
 }
 
 
-def build_ws_response(content: BaseModel, envelope: dict) -> "WsResponse":
-    """Maps a single content-only model (one of the 5 shapes above, never
-    CompositeContent itself) to its enveloped wire type. Shared by respond()'s
-    single-shape path and by each block of a CompositeContent answer, so the
-    `to`-placeholder special case and CONTENT_TO_RESPONSE lookup live in one place.
-    """
+def _build_ws_response_strict(content: BaseModel, envelope: dict) -> "WsResponse":
     if type(content) is EscalationEmailDraft:
         return EscalationEmailResponse(to=DUMMY_RECIPIENT_EMAIL, **content.model_dump(), **envelope)
     response_cls = CONTENT_TO_RESPONSE.get(type(content))
     if response_cls is None:
         raise ValueError(f"Unrecognized structured_response type: {type(content)!r}")
     return response_cls(**content.model_dump(), **envelope)
+
+
+# Recovery target for a dict that lost its Pydantic type identity somewhere
+# upstream (e.g. a checkpointer round-trip) but still holds valid content —
+# deliberately excludes CompositeContent, since a block should never itself
+# be a nested composite.
+_LEAF_CONTENT_ADAPTER = TypeAdapter(
+    Union[IssueListContent, CustomerProfileContent, EscalationEmailDraft, BulletSummaryContent, ChatMessageContent]
+)
+
+
+def _fallback_text(content: Any) -> str:
+    message = getattr(content, "message", None)
+    if isinstance(message, str) and message:
+        return message
+    if isinstance(content, dict):
+        for key in ("message", "body", "heading"):
+            value = content.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return "Sorry, I couldn't format that response properly. Could you rephrase your question?"
+
+
+def build_ws_response(content: Any, envelope: dict) -> "WsResponse":
+    """Maps a single content-only model (one of the 5 shapes above, never
+    CompositeContent itself) to its enveloped wire type. Shared by respond()'s
+    single-shape path and by each block of a CompositeContent answer, so the
+    `to`-placeholder special case and CONTENT_TO_RESPONSE lookup live in one place.
+
+    `content` is expected to already be one of the 5 shapes, but defends
+    against it arriving as a plain dict (observed in practice, most likely
+    from the Redis/LangGraph checkpointer round-tripping a prior turn's
+    structured_response) — first by trying to re-validate it back into the
+    correct shape (recovering the real card/table instead of degrading it),
+    and only falling back to a plain chat message if that's not possible, so
+    a malformed/unrecognized response never surfaces a raw error to the user.
+    """
+    try:
+        return _build_ws_response_strict(content, envelope)
+    except Exception:
+        pass
+
+    if isinstance(content, dict):
+        try:
+            recovered = _LEAF_CONTENT_ADAPTER.validate_python(content)
+            return _build_ws_response_strict(recovered, envelope)
+        except Exception:
+            pass
+
+    print(f"[build_ws_response] could not map structured_response to a known shape: {content!r}"[:500])
+    return ChatMessageResponse(message=_fallback_text(content), **envelope)
 
 
 def resolve_role_context(roles: list[str]) -> str:
