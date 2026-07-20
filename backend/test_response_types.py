@@ -201,6 +201,20 @@ def test_build_ws_response_escalation_email_placeholder():
     print("PASS: build_ws_response attaches the escalation email placeholder recipient")
 
 
+def test_build_ws_response_recovers_dict_with_recognizable_shape():
+    response = build_ws_response({"message": "hi there"}, ENVELOPE)
+    assert isinstance(response, ChatMessageResponse)
+    assert response.message == "hi there"
+    print("PASS: build_ws_response recovers a plain dict back into its correct shape")
+
+
+def test_build_ws_response_falls_back_on_unrecognized_dict():
+    response = build_ws_response({"foo": "bar"}, ENVELOPE)
+    assert isinstance(response, ChatMessageResponse)
+    assert response.message
+    print("PASS: build_ws_response falls back to chat_message for a genuinely unrecognized dict")
+
+
 def test_resolve_role_context():
     assert resolve_role_context(["admin"]) == "admin"
     assert resolve_role_context(["sales", "admin"]) == "admin"
@@ -229,5 +243,7 @@ if __name__ == "__main__":
     test_composite_content_invalid()
     test_build_ws_response_decomposes_composite_blocks()
     test_build_ws_response_escalation_email_placeholder()
+    test_build_ws_response_recovers_dict_with_recognizable_shape()
+    test_build_ws_response_falls_back_on_unrecognized_dict()
     test_resolve_role_context()
     print("\nAll response_types tests passed.")

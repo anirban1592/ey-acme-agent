@@ -39,6 +39,7 @@ services:
       - MAIN_AGENT_MODEL=${MAIN_AGENT_MODEL:-openai:gpt-5.4-mini}
       - CUSTOMER_PROFILE_AGENT_MODEL=${CUSTOMER_PROFILE_AGENT_MODEL:-openai:gpt-5.4-nano}
       - SUMMARIZE_AGENT_MODEL=${SUMMARIZE_AGENT_MODEL:-openai:gpt-5.4-nano}
+      - GUARDRAIL_MODEL=${GUARDRAIL_MODEL:-openai:gpt-5.4-nano}
     ports:
       - "8000:8000"
     depends_on:

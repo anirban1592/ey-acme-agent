@@ -10,4 +10,4 @@ redis
 langgraph-checkpoint-redis
 langsmith
 
-
+deepeval>=0.5.0
