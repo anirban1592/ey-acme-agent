@@ -5,13 +5,19 @@ from pydantic import TypeAdapter, ValidationError
 
 from agent.response_types import (
     BulletSummaryResponse,
+    ChatMessageContent,
     ChatMessageResponse,
+    CompositeContent,
+    CustomerProfileContent,
     CustomerProfileResponse,
     ErrorResponse,
+    EscalationEmailDraft,
     EscalationEmailResponse,
+    IssueListContent,
     IssueListResponse,
     IssueSummary,
     WsResponse,
+    build_ws_response,
     resolve_role_context,
 )
 
@@ -144,6 +150,57 @@ def test_discriminated_union_dispatch():
     raise AssertionError("expected ValidationError for an unknown discriminator value")
 
 
+def test_composite_content_valid():
+    composite = CompositeContent(
+        blocks=[
+            IssueListContent(
+                customer_name="Deloitte",
+                issues=[IssueSummary(id=1, title="Login broken", status="open", updated_at=datetime.now(timezone.utc))],
+            ),
+            CustomerProfileContent(customer_name="Deloitte", fields={"industry": "Consulting"}),
+        ]
+    )
+    assert len(composite.blocks) == 2
+    round_tripped = CompositeContent.model_validate_json(composite.model_dump_json())
+    assert round_tripped == composite
+    print("PASS: composite_content valid + round-trip")
+
+
+def test_composite_content_invalid():
+    try:
+        CompositeContent(blocks="not-a-list")
+    except ValidationError:
+        print("PASS: composite_content invalid payload raises ValidationError")
+        return
+    raise AssertionError("expected ValidationError for composite_content with blocks as a string")
+
+
+def test_build_ws_response_decomposes_composite_blocks():
+    composite = CompositeContent(
+        blocks=[
+            IssueListContent(
+                customer_name="Deloitte",
+                issues=[IssueSummary(id=1, title="Login broken", status="open", updated_at=datetime.now(timezone.utc))],
+            ),
+            ChatMessageContent(message="Anything else I can help with?"),
+        ]
+    )
+    responses = [build_ws_response(block, {**ENVELOPE, "request_id": str(uuid.uuid4())}) for block in composite.blocks]
+    assert len(responses) == 2
+    assert isinstance(responses[0], IssueListResponse)
+    assert isinstance(responses[1], ChatMessageResponse)
+    assert responses[0].request_id != responses[1].request_id
+    print("PASS: build_ws_response decomposes composite blocks into distinct WsResponse types")
+
+
+def test_build_ws_response_escalation_email_placeholder():
+    draft = EscalationEmailDraft(subject="Urgent: outage", body="Please advise.")
+    response = build_ws_response(draft, ENVELOPE)
+    assert isinstance(response, EscalationEmailResponse)
+    assert response.to == "recipient@example.com"
+    print("PASS: build_ws_response attaches the escalation email placeholder recipient")
+
+
 def test_resolve_role_context():
     assert resolve_role_context(["admin"]) == "admin"
     assert resolve_role_context(["sales", "admin"]) == "admin"
@@ -168,5 +225,9 @@ if __name__ == "__main__":
     test_error_valid()
     test_error_invalid()
     test_discriminated_union_dispatch()
+    test_composite_content_valid()
+    test_composite_content_invalid()
+    test_build_ws_response_decomposes_composite_blocks()
+    test_build_ws_response_escalation_email_placeholder()
     test_resolve_role_context()
     print("\nAll response_types tests passed.")

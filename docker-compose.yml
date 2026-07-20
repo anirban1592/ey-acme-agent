@@ -32,6 +32,13 @@ services:
       - MCP_SERVER_URL=http://mcp:9000/mcp
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
+      - MAIN_AGENT_MODEL=${MAIN_AGENT_MODEL:-openai:gpt-5.4-mini}
+      - CUSTOMER_PROFILE_AGENT_MODEL=${CUSTOMER_PROFILE_AGENT_MODEL:-openai:gpt-5.4-nano}
+      - SUMMARIZE_AGENT_MODEL=${SUMMARIZE_AGENT_MODEL:-openai:gpt-5.4-nano}
     ports:
       - "8000:8000"
     depends_on:

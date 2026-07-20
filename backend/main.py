@@ -113,8 +113,9 @@ async def websocket_chat(websocket: WebSocket):
                 await websocket.send_json({"reply": error.model_dump(mode="json"), "thread_id": thread_id})
                 continue
 
-            response = await respond(message_text, user, thread_id)
-            await websocket.send_json({"reply": response.model_dump(mode="json"), "thread_id": thread_id})
+            responses = await respond(message_text, user, thread_id)
+            for response in responses:
+                await websocket.send_json({"reply": response.model_dump(mode="json"), "thread_id": thread_id})
     except WebSocketDisconnect:
         pass
     except Exception as e:
