@@ -47,5 +47,11 @@ export const App: React.FC = () => {
   if (authLoading) return <div>Loading…</div>;
   if (!authenticated) return <div>Redirecting to login…</div>;
 
-  return <Chat token={keycloak.token!} />;
+  const username = keycloak.tokenParsed?.preferred_username as string | undefined;
+  const handleLogout = () => keycloak.logout({ redirectUri: window.location.origin });
+
+  // Keying by username forces a full remount (and thus a fresh, correctly
+  // re-namespaced conversationStore bootstrap) if the logged-in user ever
+  // changes without a full page navigation.
+  return <Chat key={username ?? 'anonymous'} token={keycloak.token!} username={username} onLogout={handleLogout} />;
 };

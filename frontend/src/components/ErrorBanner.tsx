@@ -4,11 +4,11 @@ export function ErrorBanner({ data }: { data: ErrorResponse }) {
   return (
     <div
       style={{
-        border: '1px solid #f5c2c2',
-        background: '#ffe0e0',
+        border: '1px solid var(--danger)',
+        background: 'var(--danger-bg)',
         borderRadius: 6,
         padding: '0.5rem 0.75rem',
-        color: '#8a1f1f',
+        color: 'var(--danger)',
         fontSize: '0.9rem',
       }}
     >

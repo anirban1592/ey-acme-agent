@@ -1,79 +1,77 @@
-import React, { useState } from 'react';
-import { useChatSocket } from './useChatSocket';
-import { ResponseRouter } from './components/ResponseRouter';
+import { useRef, useState } from 'react';
+import type { ChatMessage, ConnectionState } from './useChatSocket';
+import {
+  bootstrapThreads,
+  createThread,
+  saveThreads,
+  setActiveThreadCookie,
+  upsertThreadMessages,
+  type StoredThread,
+} from './conversationStore';
+import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
+import { ChatWindow } from './components/ChatWindow';
 
-export const Chat: React.FC<{ token: string }> = ({ token }) => {
-  const { messages, connectionState, sendMessage } = useChatSocket(token);
-  const [input, setInput] = useState('');
+export function Chat({
+  token,
+  username,
+  onLogout,
+}: {
+  token: string;
+  username?: string;
+  onLogout: () => void;
+}) {
+  // Namespaces every localStorage read/write to the logged-in user, so two
+  // accounts sharing a browser never see each other's threads.
+  const userKey = username ?? 'anonymous';
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text) return;
-    sendMessage(text);
-    setInput('');
-  };
+  const bootstrapRef = useRef<{ threads: StoredThread[]; activeThreadId: string } | null>(null);
+  if (bootstrapRef.current === null) {
+    bootstrapRef.current = bootstrapThreads(userKey, username ?? 'there');
+  }
+
+  const [threads, setThreads] = useState<StoredThread[]>(bootstrapRef.current.threads);
+  const [activeThreadId, setActiveThreadId] = useState<string>(bootstrapRef.current.activeThreadId);
+  const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
+
+  function handleNewChat() {
+    const thread = createThread(username ?? 'there');
+    setActiveThreadCookie(thread.id);
+    setThreads((prev) => saveThreads(userKey, [thread, ...prev]));
+    setActiveThreadId(thread.id);
+  }
+
+  function handleSelectThread(id: string) {
+    if (id === activeThreadId) return;
+    setActiveThreadCookie(id);
+    setActiveThreadId(id);
+  }
+
+  function handleTranscriptChange(threadId: string, messages: ChatMessage[]) {
+    setThreads((prev) => saveThreads(userKey, upsertThreadMessages(prev, threadId, messages)));
+  }
+
+  const active = threads.find((t) => t.id === activeThreadId);
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 600, margin: '0 auto' }}>
-      <h1>Customer Issue &amp; Account Assistant</h1>
-      <p style={{ color: '#666' }}>Connection: {connectionState}</p>
-      <div
-        style={{
-          border: '1px solid #ccc',
-          borderRadius: 8,
-          padding: '1rem',
-          height: 400,
-          overflowY: 'auto',
-          marginBottom: '1rem',
-        }}
-      >
-        {messages.map((m, i) =>
-          m.role === 'user' ? (
-            <div key={i} style={{ textAlign: 'right', margin: '0.5rem 0' }}>
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: 12,
-                  background: '#0b93f6',
-                  color: '#fff',
-                  maxWidth: '80%',
-                }}
-              >
-                {m.text}
-              </span>
-            </div>
-          ) : (
-            <div key={i} style={{ textAlign: 'left', margin: '0.5rem 0' }}>
-              <div
-                style={{
-                  display: 'inline-block',
-                  padding: '0.5rem 0.75rem',
-                  borderRadius: 12,
-                  background: m.response.type === 'error' ? 'transparent' : '#e5e5ea',
-                  color: '#000',
-                  maxWidth: '100%',
-                }}
-              >
-                <ResponseRouter response={m.response} />
-              </div>
-            </div>
-          ),
-        )}
-      </div>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
-          style={{ flex: 1, padding: '0.5rem' }}
-          disabled={connectionState !== 'open'}
+    <div className="app-shell">
+      <Header username={username} connectionState={connectionState} onLogout={onLogout} />
+      <div className="app-body">
+        <Sidebar
+          threads={threads}
+          activeThreadId={activeThreadId}
+          onSelectThread={handleSelectThread}
+          onNewChat={handleNewChat}
         />
-        <button type="submit" disabled={connectionState !== 'open'}>
-          Send
-        </button>
-      </form>
+        <ChatWindow
+          key={activeThreadId}
+          token={token}
+          threadId={activeThreadId}
+          initialMessages={active?.messages ?? []}
+          onTranscriptChange={handleTranscriptChange}
+          onConnectionStateChange={setConnectionState}
+        />
+      </div>
     </div>
   );
-};
+}

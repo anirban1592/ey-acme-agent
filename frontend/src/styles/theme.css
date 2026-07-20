@@ -1,0 +1,332 @@
+/* ---------------------------------------------------------------------- */
+/* Palette + type tokens                                                   */
+/* ---------------------------------------------------------------------- */
+:root {
+  --ink: #12151b;
+  --panel: #1a2029;
+  --panel-raised: #212836;
+  --hairline: #2b3340;
+  --paper: #eef1f5;
+  --fog: #8b93a3;
+  --signal: #e8a33d;
+  --signal-dim: #c98a2e;
+  --user-bubble: #2f6f6a;
+  --danger: #ef6461;
+  --danger-bg: #2c1918;
+  --ok: #4fd1ae;
+
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-body);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Shared status-dot motif — reused by Header, Sidebar, WaitingIndicator   */
+/* ---------------------------------------------------------------------- */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot--ok {
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok);
+}
+.status-dot--signal {
+  background: var(--signal);
+  box-shadow: 0 0 6px var(--signal);
+}
+.status-dot--danger {
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger);
+}
+.status-dot--idle {
+  background: transparent;
+  border: 1px solid var(--fog);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Buttons                                                                 */
+/* ---------------------------------------------------------------------- */
+.btn {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 6px;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--fog);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: #1a1305;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--signal-dim);
+  border-color: var(--signal-dim);
+}
+.btn-ghost {
+  border-color: transparent;
+  color: var(--fog);
+}
+.btn-ghost:hover:not(:disabled) {
+  color: var(--paper);
+  border-color: var(--hairline);
+}
+
+/* ---------------------------------------------------------------------- */
+/* App shell / layout                                                      */
+/* ---------------------------------------------------------------------- */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Header                                                                  */
+/* ---------------------------------------------------------------------- */
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--hairline);
+  flex-shrink: 0;
+}
+.header-title {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--paper);
+  margin: 0;
+}
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+.header-user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--fog);
+}
+.header-username {
+  color: var(--paper);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Sidebar                                                                 */
+/* ---------------------------------------------------------------------- */
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  padding: 0.9rem;
+  overflow-y: auto;
+}
+.sidebar-new-chat-btn {
+  width: 100%;
+  margin-bottom: 0.9rem;
+}
+.sidebar-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fog);
+  margin: 0 0 0.5rem 0.2rem;
+}
+.sidebar-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.sidebar-thread-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+.sidebar-thread-item:hover {
+  background: var(--panel-raised);
+}
+.sidebar-thread-item--active {
+  background: var(--panel-raised);
+  border-color: var(--hairline);
+}
+.sidebar-thread-item .status-dot {
+  margin-top: 0.35rem;
+}
+.sidebar-thread-text {
+  min-width: 0;
+}
+.sidebar-thread-title {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-thread-meta {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--fog);
+  margin-top: 0.15rem;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Chat window                                                             */
+/* ---------------------------------------------------------------------- */
+.chat-window {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chat-transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.chat-row {
+  display: flex;
+}
+.chat-row--user {
+  justify-content: flex-end;
+}
+.chat-row--agent {
+  justify-content: flex-start;
+}
+.chat-bubble {
+  max-width: 70%;
+  padding: 0.6rem 0.85rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.chat-bubble--user {
+  background: var(--user-bubble);
+  color: #ffffff;
+}
+.chat-bubble--agent {
+  background: var(--panel-raised);
+  color: var(--paper);
+  max-width: 100%;
+}
+.chat-bubble--error {
+  background: transparent;
+  padding: 0;
+  max-width: 100%;
+}
+
+.chat-input-bar {
+  display: flex;
+  gap: 0.6rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--hairline);
+  background: var(--panel);
+}
+.chat-input {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+.chat-input:focus {
+  outline: 2px solid var(--signal);
+  outline-offset: 1px;
+}
+.chat-input::placeholder {
+  color: var(--fog);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Waiting indicator                                                       */
+/* ---------------------------------------------------------------------- */
+.waiting-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--fog);
+  padding: 0.2rem 0.1rem;
+}
+.waiting-indicator .status-dot--signal {
+  animation: waiting-pulse 1.3s ease-in-out infinite;
+}
+@keyframes waiting-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waiting-indicator .status-dot--signal {
+    animation: none;
+  }
+}

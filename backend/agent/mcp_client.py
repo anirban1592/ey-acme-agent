@@ -13,7 +13,7 @@ async def inject_role_interceptor(request: MCPToolCallRequest, handler):
     core.py) so every agent graph that talks to the MCP server shares this
     exact same RBAC enforcement point, rather than each duplicating it.
     """
-    if request.name in ("retrieve_customer_profile", "retrieve_issue_updates"):
+    if request.name in ("retrieve_customer_issues", "retrieve_issue_updates"):
         ctx: AgentContext = request.runtime.context
         request = request.override(args={**request.args, "roles": list(ctx.roles)})
     return await handler(request)

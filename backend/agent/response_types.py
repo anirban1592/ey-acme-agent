@@ -75,6 +75,29 @@ class ChatMessageContent(BaseModel):
     )
 
 
+class CompositeContent(BaseModel):
+    """Use this — and only this — when a single reply genuinely needs more
+    than one of the other shapes, because the user asked for more than one
+    kind of thing and you called separate tools for each. Example: "Show me
+    the company profile for Google and list its issues" requires calling both
+    a profile tool and an issues tool, then answering with a CompositeContent
+    containing one CustomerProfileContent block AND one IssueListContent
+    block — never just the profile block alone, and never two separate
+    top-level tool calls instead of this one. Never use this to wrap what is
+    really a single-shape answer.
+    """
+
+    blocks: list[
+        Union[IssueListContent, CustomerProfileContent, EscalationEmailDraft, BulletSummaryContent, ChatMessageContent]
+    ] = Field(
+        description=(
+            "One block per distinct shape actually needed, in the order the user should "
+            "see them — every part of a multi-part question must get its own block, none "
+            "dropped. Never fabricate a block with no supporting tool result."
+        )
+    )
+
+
 class IssueListResponse(BaseResponse, IssueListContent):
     type: Literal["issue_list"] = "issue_list"
 
@@ -124,6 +147,20 @@ CONTENT_TO_RESPONSE: dict[type[BaseModel], type[BaseResponse]] = {
     BulletSummaryContent: BulletSummaryResponse,
     ChatMessageContent: ChatMessageResponse,
 }
+
+
+def build_ws_response(content: BaseModel, envelope: dict) -> "WsResponse":
+    """Maps a single content-only model (one of the 5 shapes above, never
+    CompositeContent itself) to its enveloped wire type. Shared by respond()'s
+    single-shape path and by each block of a CompositeContent answer, so the
+    `to`-placeholder special case and CONTENT_TO_RESPONSE lookup live in one place.
+    """
+    if type(content) is EscalationEmailDraft:
+        return EscalationEmailResponse(to=DUMMY_RECIPIENT_EMAIL, **content.model_dump(), **envelope)
+    response_cls = CONTENT_TO_RESPONSE.get(type(content))
+    if response_cls is None:
+        raise ValueError(f"Unrecognized structured_response type: {type(content)!r}")
+    return response_cls(**content.model_dump(), **envelope)
 
 
 def resolve_role_context(roles: list[str]) -> str:

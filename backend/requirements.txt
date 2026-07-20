@@ -8,5 +8,6 @@ langchain-openai
 langchain-mcp-adapters>=0.3.0
 redis
 langgraph-checkpoint-redis
+langsmith
 
 

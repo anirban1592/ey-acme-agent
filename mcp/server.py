@@ -25,7 +25,7 @@ mcp = FastMCP("issues-mcp", lifespan=app_lifespan)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-async def retrieve_customer_profile(
+async def retrieve_customer_issues(
     customer_name: str, roles: list[str], ctx: Context
 ) -> list[Issue]:
     """Return the issues for a customer, scoped to the caller's roles.

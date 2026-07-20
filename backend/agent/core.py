@@ -13,20 +13,19 @@ from models import User
 
 from .checkpointer import get_checkpointer
 from .context import AgentContext
-from .customer_profile import consult_customer_profile_agent
+from .customer_profile import get_customer_profile
 from .escalation_agent import consult_escalation_agent
 from .mcp_client import get_mcp_tools
 from .response_types import (
-    CONTENT_TO_RESPONSE,
-    DUMMY_RECIPIENT_EMAIL,
     BulletSummaryContent,
     ChatMessageContent,
+    CompositeContent,
     CustomerProfileContent,
     ErrorResponse,
     EscalationEmailDraft,
-    EscalationEmailResponse,
     IssueListContent,
     WsResponse,
+    build_ws_response,
     resolve_role_context,
 )
 from .summarize_agent import consult_summarizer_agent
@@ -46,15 +45,42 @@ BASE_SYSTEM_PROMPT = (
     "values that no tool result supports. When using the chat message shape, "
     "its text is the literal reply shown directly to the user, verbatim — "
     "never a description of your plan, reasoning, or what you intend to say.\n\n"
-    "If you called a tool that returned structured data — a list of issues, "
-    "a customer profile, or an issue's history/updates/timeline — always "
-    "answer using the matching structured shape (issue_list, "
-    "customer_profile, or bullet_summary respectively), never chat_message. "
-    "For issue history specifically, use bullet_summary with heading = the "
-    "issue's current status and points = the update timeline, regardless of "
-    "whether you called retrieve_issue_updates directly or via "
-    "consult_summarizer_agent. chat_message is reserved for genuinely "
-    "tool-free, plain conversation."
+    "If the user is asking to see/view/list an entity itself — the issues "
+    "for a customer, a customer's profile, an issue's history/updates/"
+    "timeline — always answer using the matching structured shape "
+    "(issue_list, customer_profile, or bullet_summary respectively) once "
+    "you've called the tool that returns it, never chat_message. For issue "
+    "history specifically, use bullet_summary with heading = the issue's "
+    "current status and points = the update timeline, regardless of whether "
+    "you called retrieve_issue_updates directly or via "
+    "consult_summarizer_agent.\n\n"
+    "That structured-shape rule is for requests to see the whole entity. A "
+    "narrower follow-up question that only asks about one fact within an "
+    "entity — e.g. \"how many employees does it have\", \"who are the "
+    "primary contacts\", \"what's the account tier\" — must be answered with "
+    "chat_message containing just the direct answer (a word or short "
+    "phrase), never by re-emitting the full customer_profile/issue_list/"
+    "bullet_summary shape again. Before calling any tool, check whether the "
+    "conversation so far already contains the data needed to answer — e.g. "
+    "a customer profile or issue list you already fetched earlier in this "
+    "same conversation — and if so, answer directly from that instead of "
+    "calling the tool again. chat_message is otherwise reserved for "
+    "genuinely tool-free, plain conversation.\n\n"
+    "A single user message can ask for more than one thing. If answering it "
+    "fully needs more than one of the shapes above, you MUST call the "
+    "CompositeContent tool with one block per shape — never answer with only "
+    "one shape and silently drop the rest of the question, and never call "
+    "more than one of the other structured-output tools in the same turn "
+    "(e.g. calling both CustomerProfileContent and IssueListContent directly "
+    "is invalid; CompositeContent with two blocks is the only valid way to "
+    "combine them). For example: \"Show me the company profile for Google "
+    "and list its issues\" requires calling both a profile tool and an "
+    "issues tool, then responding with CompositeContent containing one "
+    "CustomerProfileContent block AND one IssueListContent block — "
+    "responding with CustomerProfileContent alone is wrong even though it is "
+    "part of a correct answer. Never use CompositeContent to wrap what is "
+    "really a single-shape answer, and never fabricate a block with no "
+    "supporting tool result."
 )
 
 
@@ -87,7 +113,7 @@ async def get_agent():
         async with _agent_lock:
             if _agent is None:
                 tools = (await get_mcp_tools()) + [
-                    consult_customer_profile_agent,
+                    get_customer_profile,
                     consult_summarizer_agent,
                     consult_escalation_agent,
                 ]
@@ -105,28 +131,32 @@ async def get_agent():
                             EscalationEmailDraft,
                             BulletSummaryContent,
                             ChatMessageContent,
+                            CompositeContent,
                         ]
                     ),
                 )
     return _agent
 
 
-async def respond(message: str, user: User, thread_id: str) -> WsResponse:
+async def respond(message: str, user: User, thread_id: str) -> list[WsResponse]:
     """
     Invokes the LangChain agent with the user message, scoped to the
     authenticated caller via AgentContext, and persisted/resumed via the
-    Redis checkpointer keyed on thread_id. Returns a typed, enveloped
-    response (see response_types.py) — never raw text. Envelope fields
+    Redis checkpointer keyed on thread_id. Returns a list of typed, enveloped
+    responses (see response_types.py) — never raw text — one per WebSocket
+    message the caller should send. Normally a single-element list; more than
+    one only when the agent used the composite/blocks shape for a turn that
+    genuinely spanned multiple structured shapes. Envelope fields
     (request_id/timestamp/role_context) are always supplied here, never
     trusted from the LLM's own structured output, mirroring the RBAC
     convention of never trusting the model for security/consistency-critical
     fields.
     """
-    envelope = dict(
-        request_id=str(uuid.uuid4()),
-        timestamp=datetime.now(timezone.utc),
-        role_context=resolve_role_context(user.roles),
-    )
+    role_context = resolve_role_context(user.roles)
+
+    def fresh_envelope() -> dict:
+        return dict(request_id=str(uuid.uuid4()), timestamp=datetime.now(timezone.utc), role_context=role_context)
+
     try:
         agent = await get_agent()
         input_data = {"messages": [HumanMessage(content=message)]}
@@ -135,14 +165,10 @@ async def respond(message: str, user: User, thread_id: str) -> WsResponse:
         result = await agent.ainvoke(input_data, context=context, config=config)
 
         content = result.get("structured_response")
-        if type(content) is EscalationEmailDraft:
-            # `to` is never LLM-controlled, even at this outer layer — always
-            # the shared placeholder, attached here in Python, not copied
-            # from whatever the model produced.
-            return EscalationEmailResponse(to=DUMMY_RECIPIENT_EMAIL, **content.model_dump(), **envelope)
-        response_cls = CONTENT_TO_RESPONSE.get(type(content))
-        if response_cls is None:
-            raise ValueError(f"Unrecognized structured_response type: {type(content)!r}")
-        return response_cls(**content.model_dump(), **envelope)
+        if type(content) is CompositeContent:
+            if not content.blocks:
+                raise ValueError("CompositeContent returned with no blocks")
+            return [build_ws_response(block, fresh_envelope()) for block in content.blocks]
+        return [build_ws_response(content, fresh_envelope())]
     except Exception as e:
-        return ErrorResponse(message=str(e), code="agent_error", **envelope)
+        return [ErrorResponse(message=str(e), code="agent_error", **fresh_envelope())]
