@@ -44,7 +44,7 @@ services:
       - "8000:8000"
     depends_on:
       keycloak:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       mcp:
