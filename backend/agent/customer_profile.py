@@ -48,7 +48,7 @@ async def consult_customer_profile_agent(runtime: ToolRuntime[AgentContext], que
     """Delegate a customer CRM/account-profile question (industry, account
     tier, account manager, contract value, risk level, sentiment, notes) to
     the specialist customer-profile sub-agent. Do not use this for
-    issue-tracking questions — use retrieve_customer_profile for those."""
+    issue-tracking questions — use retrieve_customer_issues for those."""
     if "admin" not in runtime.context.roles:
         raise PermissionError(
             "consult_customer_profile_agent is restricted to users with the 'admin' role."

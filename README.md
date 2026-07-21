@@ -4,6 +4,14 @@ An AI assistant for tracking customer issues and account management. Users log i
 
 For the full architecture rationale and phase-by-phase decision log, see `project.md` and `CLAUDE.md`.
 
+> ### 🔑 Bring your own OpenAI API key
+> This is the **only** thing you need to change to run the app. Everything else in `.env.example` already has a working default.
+> 1. `cp .env.example .env`
+> 2. Open `.env` and paste your key into `OPENAI_API_KEY=` (get one at https://platform.openai.com/api-keys)
+> 3. `docker compose up --build`
+>
+> No other values need to change — Keycloak, Postgres, Redis, and the MCP server are all pre-configured to work together out of the box.
+
 ---
 
 ## 📦 Components
@@ -13,7 +21,7 @@ For the full architecture rationale and phase-by-phase decision log, see `projec
 | `keycloak/` | Keycloak | Identity provider — issues JWTs, pre-loaded with a realm, client, and sample users via `realm-export.json` |
 | `frontend/` | React + Vite | Chat UI — Keycloak login gate, multi-thread sidebar, typed response rendering (tables/cards, not just prose) |
 | `backend/` | FastAPI | Validates JWTs, hosts the `/ws/chat` WebSocket, runs the LangChain/LangGraph agent (main agent + 3 sub-agents + a guardrail) |
-| `mcp/` | FastMCP | Model Context Protocol server — the agent's only path to issue data (`retrieve_customer_profile`, `retrieve_issue_updates`), enforcing role/persona-based access |
+| `mcp/` | FastMCP | Model Context Protocol server — the agent's only path to issue data (`retrieve_customer_issues`, `retrieve_issue_updates`), enforcing role/persona-based access |
 | `postgres/` | PostgreSQL | App data: customers, CRM details, issues, issue updates, users/roles. Ephemeral (`tmpfs`) — reseeds from `postgres/initv2.sql` on every start |
 | `redis/` | Redis 8 | Short-term, per-thread conversation memory for the agent (LangGraph checkpointer). Also ephemeral |
 

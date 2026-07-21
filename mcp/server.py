@@ -35,7 +35,7 @@ async def retrieve_customer_issues(
     issues are returned regardless of persona.
     """
     logger.info(
-        "retrieve_customer_profile called with customer_name=%r roles=%r",
+        "retrieve_customer_issues called with customer_name=%r roles=%r",
         customer_name,
         roles,
     )
@@ -52,7 +52,7 @@ async def retrieve_issue_updates(
 
     Returns None if the issue does not exist, or if the caller's roles
     don't include the issue's persona and aren't admin — deliberately not
-    distinguishing the two cases, mirroring retrieve_customer_profile's
+    distinguishing the two cases, mirroring retrieve_customer_issues'
     existing no-existence-leak convention.
     """
     logger.info(

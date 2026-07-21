@@ -8,7 +8,7 @@ A single `asyncpg` connection pool is created once, at server startup, via FastM
 
 ## Tools
 
-### `retrieve_customer_profile(customer_name, roles)`
+### `retrieve_customer_issues(customer_name, roles)`
 
 Returns the issues for a given customer, scoped by the caller's roles.
 
@@ -26,7 +26,7 @@ from fastmcp import Client
 
 async with Client("http://localhost:9000/mcp") as client:
     result = await client.call_tool(
-        "retrieve_customer_profile",
+        "retrieve_customer_issues",
         {"customer_name": "Google", "roles": ["sales"]},
     )
     print(result.data)
@@ -34,7 +34,7 @@ async with Client("http://localhost:9000/mcp") as client:
 
 ### `retrieve_issue_updates(issue_id, roles)`
 
-Returns a single issue plus all of its `issue_updates` rows (comments/history), newest-first, scoped by the caller's roles the same way as `retrieve_customer_profile`.
+Returns a single issue plus all of its `issue_updates` rows (comments/history), newest-first, scoped by the caller's roles the same way as `retrieve_customer_issues`.
 
 - Filters on `issues.persona` matching any entry in `roles` (case-insensitive, `ILIKE ANY`), with the same `"admin"` bypass.
 - Returns `null` if the issue doesn't exist, or if the caller's roles don't include the issue's persona and aren't admin — the two cases are deliberately indistinguishable to the caller (no existence leak).
@@ -50,7 +50,7 @@ async with Client("http://localhost:9000/mcp") as client:
     print(result.data)
 ```
 
-**Trust model (Phase 4.5, extended in Phase 4.7)**: the MCP server still trusts `roles` as given by the caller — it does not itself validate against the `roles` table or a JWT. The backend agent (`backend/agent/core.py`) is the trusted caller: it overwrites the `roles` argument on every `retrieve_customer_profile` and `retrieve_issue_updates` call with the authenticated user's actual DB-backed roles via a `langchain-mcp-adapters` tool interceptor, so nothing the LLM puts in its own tool-call arguments is ever used. See `CLAUDE.md`'s decision log for details.
+**Trust model (Phase 4.5, extended in Phase 4.7)**: the MCP server still trusts `roles` as given by the caller — it does not itself validate against the `roles` table or a JWT. The backend agent (`backend/agent/mcp_client.py`) is the trusted caller: it overwrites the `roles` argument on every `retrieve_customer_issues` and `retrieve_issue_updates` call with the authenticated user's actual DB-backed roles via a `langchain-mcp-adapters` tool interceptor, so nothing the LLM puts in its own tool-call arguments is ever used. See `CLAUDE.md`'s decision log for details.
 
 ## Environment variables
 
