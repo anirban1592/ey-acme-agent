@@ -16,3 +16,4 @@ build/
 # DeepEval local cache/results (backend/evals/)
 .deepeval/
 eval_report.json
+progress-tracker.md
