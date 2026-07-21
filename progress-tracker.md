@@ -11,7 +11,7 @@
 | Phase 3 | MCP server (`mcp/`, fastmcp) with its own DB connection pool, wrapping Postgres directly | Done |
 | Phase 4 | Agentic chat layer (LLM + tool-calling + MCP server against Phase 3 service layer) | In progress |
 | Phase 5 | Escalation workflow, WebSocket chat UI integration, RBAC refinement | Not started |
-| Phase 6 | Evaluation (deepeval), observability, hardening, deployment | Not started |
+| Phase 6 | Evaluation (deepeval), observability, hardening, deployment | In progress |
 
 ---
 
@@ -281,4 +281,24 @@ Not started. Scope: prompt-based escalation skill, role-based permission refinem
 
 ## Phase 6: Evaluation, Observability, Hardening, Deployment
 
-Not started. Scope: evaluation via deepeval, logging/tracing, CI/CD, GitHub setup, README/architecture diagram finalization.
+In progress. Scope: evaluation via deepeval, logging/tracing, CI/CD, GitHub setup, README/architecture diagram finalization.
+
+### Subphases
+
+- [x] **6.1 DeepEval golden-question eval suite (tool selection + response correctness)**
+  New `backend/evals/` directory: a DeepEval golden-question suite for the main agent (`backend/agent/core.py`'s `respond()`/`get_agent()`), replacing an earlier broken scaffold (untracked, never committed) that imported `deepeval.evaluate` but never actually called it — it called the async `respond()` synchronously with `user=None`, which would crash immediately, and its second "citation grounding" check was unrelated to this app (no RAG/citations here).
+  - `backend/evals/.dataset.json`: 19 hand-drafted golden cases (question, expected top-level tool(s), a natural-language expected-response description, and which seeded user asks it), built from the real seeded customers/issues/personas/users in `postgres/initv2.sql` rather than `deepeval generate` — covers all 5 main-agent tools (`retrieve_customer_issues`, `retrieve_issue_updates` via `consult_summarizer_agent`, `get_customer_profile`, `consult_escalation_agent`), RBAC positive/negative cases per persona/role (including the admin-only CRM gate and the no-role `eve` edge case), one composite (two-shape) answer, plain chat, and both guardrail-block paths (prompt injection, off-topic).
+  - `backend/evals/agent_runner.py`: runs the real agent singleton per case as the seeded user, capturing the final reply text and every top-level tool call via a `ToolCallRecorder` LangChain callback — data `respond()` itself doesn't expose, since its contract to WebSocket callers is just `list[WsResponse]`. Deliberately mirrors `respond()`'s own `agent.ainvoke()` invocation rather than calling `respond()` directly, purely so a callback can be threaded through. Includes retry-with-backoff on `RateLimitError` (up to 12 retries, capped ~90s) and a 15s pause between cases, since a single agent turn (guardrail classifier + main agent + often a sub-agent call + structured-output formatting) can be several chained LLM calls, and this project's OpenAI org has a tight ~200k TPM limit.
+  - `backend/evals/metrics.py`: two metrics — `ToolCorrectnessMetric` (did the agent call the expected tool(s), matched by name only, order-independent) and a custom `GEval` "Response Correctness" criterion (there's no predefined DeepEval metric for domain-specific correctness like RBAC-scoped data or exact guardrail-rejection text).
+  - `backend/evals/test_golden_eval.py`: the committed `deepeval test run` suite. Builds every `LLMTestCase` up front inside a single `asyncio.run()` call before any pytest assertion runs — the agent singleton's Redis checkpointer and MCP HTTP client bind to whichever event loop first builds them (`get_agent()` in `core.py`), so pytest-asyncio's default of a fresh loop per test would break every case after the first. This matches DeepEval's own documented pattern for pre-built test cases (`EvaluationDataset.add_test_case` + parametrizing over `dataset.test_cases`).
+  - `backend/evals/run_once.py`: a one-off runner (`python -m evals.run_once [--limit N]`) that runs the suite once and writes `backend/evals/eval_report.json` with per-case, per-metric pass/fail/score/reason plus overall pass percentages — the "what percentage is passing" answer, outside the pytest/CI path.
+  - `.github/workflows/ci.yml`: split into a `unit-tests` job (fast, runs on every push/PR touching `backend/agent/**`, no live infra) and a `golden-eval` job (nightly cron + manual `workflow_dispatch` only, not every push) that brings up Postgres/mcp/Redis via `docker compose` and runs `deepeval test run backend/evals/test_golden_eval.py` with `OPENAI_API_KEY` from repo secrets — kept off the push/PR path deliberately, since the suite makes real paid OpenAI calls (both for the agent and as DeepEval's judge model) and billing a call per commit wasn't warranted.
+  - `.gitignore`: added `.deepeval/` and `eval_report.json` (DeepEval's local cache/result files, not meant to be committed).
+  **Test**: Verified live against the full stack (`docker compose up -d postgres mcp redis`, real `OPENAI_API_KEY`) via `run_once.py --limit 4` — 4/4 passed on both metrics (100% tool selection, 100% response correctness), and the results concretely confirmed RBAC persona-filtering works end-to-end (e.g. alice/admin's reply listed all 3 of Google's issues across sales/support/operations personas, while bob/sales's reply for Deloitte correctly included only the sales-persona issue). The remaining 15 of 19 cases were not run in this session — paused after the smoke test, at the user's choice, once the first unthrottled attempt at the full 19 hit the account's TPM rate limit mid-run.
+  **Notes**: The dataset is a hand-drafted starter set (the user explicitly chose this over `deepeval generate`), meant to be edited/extended directly as a plain JSON array. Not yet covered: multi-turn follow-up behavior (this suite is single-turn QA pairs by design, matching how the user described the golden-set format); a dedicated multi-turn/conversational suite would be a separate addition if that needs evaluating. See `backend/evals/README.md` for full run instructions and how to interpret failures.
+
+### Open Questions / Risks
+
+- The full 19-case golden run hasn't completed in one sitting yet — worth doing once, both to get the true overall pass percentage and to confirm the retry/backoff tuning (12 retries, 15s inter-case spacing) is actually sufficient against this OpenAI org's real TPM ceiling, not just sufficient for a 4-case smoke test.
+- The golden dataset (19 cases) is a starting point, not exhaustive — e.g. no case yet covers the "narrow follow-up answered from conversation history instead of re-calling a tool" behavior from the 2026-07-20 Phase 4.11 follow-up #3 decision, since that requires multi-turn state and this suite is single-turn by design.
+- `golden-eval` CI job requires an `OPENAI_API_KEY` repo secret to be configured — not yet confirmed set up in the actual GitHub repo settings.

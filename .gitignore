@@ -12,3 +12,7 @@ node_modules/
 build/
 .DS_Store
 .plawright-mcp/
+
+# DeepEval local cache/results (backend/evals/)
+.deepeval/
+eval_report.json
