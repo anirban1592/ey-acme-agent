@@ -82,7 +82,16 @@ Show me the customer profile for Facebook.
 How many employees are there in this company?
 Who are the primary contacts for this company?
 ```
-The first question returns a structured profile card; the two follow-ups are answered directly from conversation memory (no need to re-name the company) instead of re-fetching the whole profile.
+The first question returns a structured profile card; the two follow-ups are answered directly from conversation memory (no need to re-name the company) instead of re-fetching the whole profile. **This one is admin-only** — see the RBAC example right below.
+
+**Role-based access control (RBAC) — same question, different outcome by role:**
+```
+Show me the customer profile for Facebook.
+```
+- Logged in as `alice` (`admin`) → returns the full CRM profile (industry, account tier, risk level, etc.).
+- Logged in as `bob`, `charlie`, or `tony` (non-admin) → denied, with a reply explaining you don't have permission to view that data. The actual profile fields are never included in the denial — this is enforced server-side in the tool itself, not just hidden in the UI, so asking the agent to "pretend" to be an admin doesn't change the outcome.
+
+This is specific to the *CRM profile* tool — it's stricter than the issues/history tools above, which are scoped per-persona (sales/operations/support) rather than admin-only; see "Two more things worth knowing" below for that distinction.
 
 **Open issues for a company:**
 ```
